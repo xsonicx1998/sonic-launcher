@@ -41,6 +41,21 @@ pub mod art_pure {
             ),
         )
     }
+    /// JPEG (FF D8 FF), PNG (89 50 4E 47 0D 0A 1A 0A), WebP (RIFF xxxx WEBP).
+    /// Mirror of `art.rs::is_image_bytes` — the download validator.
+    pub fn is_image_bytes(b: &[u8]) -> bool {
+        if b.len() >= 3 && b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF {
+            return true; // JPEG
+        }
+        if b.len() >= 8 && b[..8] == [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] {
+            return true; // PNG
+        }
+        if b.len() >= 12 && &b[0..4] == b"RIFF" && &b[8..12] == b"WEBP" {
+            return true; // WebP
+        }
+        false
+    }
+
     pub fn parse_sgdb_search(json: &serde_json::Value) -> Vec<(u64, String)> {
         let mut out = Vec::new();
         if let Some(data) = json.get("data").and_then(|d| d.as_array()) {
@@ -102,6 +117,18 @@ pub mod art_pure {
                 c,
                 "https://cdn.cloudflare.steamstatic.com/steam/apps/440/library_600x900.jpg"
             );
+        }
+
+        #[test]
+        fn is_image_bytes_accepts_jpeg_png_webp_and_rejects_html() {
+            assert!(is_image_bytes(&[0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10]));
+            assert!(is_image_bytes(&[
+                0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00
+            ]));
+            assert!(is_image_bytes(b"RIFF\x00\x00\x00\x00WEBPVP8 "));
+            assert!(!is_image_bytes(b"<!DOCTYPE html>"));
+            assert!(!is_image_bytes(b""));
+            assert!(!is_image_bytes(b"RIFF\x00\x00\x00\x00XXXX"));
         }
 
         #[test]
@@ -209,6 +236,56 @@ pub mod music_pure {
             url,
             source,
         })
+    }
+
+    /// "Paste Music URL" validation: `https://` only, and no whitespace
+    /// or newlines anywhere (a newline could smuggle a second flag/URL
+    /// into the yt-dlp call). Mirror of `music.rs`.
+    pub fn is_valid_music_url(url: &str) -> bool {
+        let url = url.trim();
+        if url.is_empty() || !url.starts_with("https://") {
+            return false;
+        }
+        !url.chars().any(|c| c.is_whitespace())
+    }
+
+    /// YouTube video IDs are `[A-Za-z0-9_-]` (11 chars). Anything else is
+    /// rejected before it is ever turned into a URL.
+    pub fn is_valid_video_id(id: &str) -> bool {
+        !id.is_empty()
+            && id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    }
+
+    /// Parse an official `SHA2-256SUMS` file and return the expected hex
+    /// digest for `filename`. Mirror of `music.rs` (yt-dlp integrity).
+    pub fn parse_sha256sums(sums: &str, filename: &str) -> Option<String> {
+        for line in sums.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let mut parts = line.split_whitespace();
+            let hash = parts.next()?;
+            let name = parts.next()?;
+            let name = name.trim_start_matches('*');
+            if name == filename
+                && hash.len() == 64
+                && hash.chars().all(|c| c.is_ascii_hexdigit())
+            {
+                return Some(hash.to_lowercase());
+            }
+        }
+        None
+    }
+
+    /// Only a native audio container may land in the music cache.
+    pub fn is_allowed_audio_ext(ext: &str) -> bool {
+        matches!(
+            ext.to_lowercase().as_str(),
+            "m4a" | "opus" | "webm" | "ogg" | "mp3"
+        )
     }
 
     pub fn sanitize_game_title(title: &str) -> String {
@@ -357,6 +434,52 @@ pub mod music_pure {
         }
 
         #[test]
+        fn music_url_must_be_https_without_whitespace() {
+            assert!(is_valid_music_url("https://www.youtube.com/watch?v=abc"));
+            assert!(is_valid_music_url("https://soundcloud.com/a/b"));
+            assert!(!is_valid_music_url("http://example.com/a.mp3"));
+            assert!(!is_valid_music_url("file:///etc/passwd"));
+            assert!(!is_valid_music_url(""));
+            assert!(!is_valid_music_url("https://example.com/a b.mp3"));
+            assert!(!is_valid_music_url("https://example.com/a.mp3\n--exec"));
+            assert!(!is_valid_music_url("javascript:alert(1)"));
+        }
+
+        #[test]
+        fn video_id_allows_only_youtube_id_chars() {
+            assert!(is_valid_video_id("dQw4w9WgXcQ"));
+            assert!(is_valid_video_id("abc-123_XYZ"));
+            assert!(!is_valid_video_id(""));
+            assert!(!is_valid_video_id("abc def"));
+            assert!(!is_valid_video_id("abc;rm"));
+            assert!(!is_valid_video_id("https://youtube.com/watch?v=abc"));
+        }
+
+        #[test]
+        fn parse_sha256sums_finds_the_binary_entry() {
+            let sums = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  yt-dlp.exe\nabc123  other.bin\n";
+            assert_eq!(
+                parse_sha256sums(sums, "yt-dlp.exe"),
+                Some(
+                    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                        .to_string()
+                )
+            );
+            assert_eq!(parse_sha256sums(sums, "missing.exe"), None);
+            assert_eq!(parse_sha256sums("", "yt-dlp.exe"), None);
+        }
+
+        #[test]
+        fn audio_ext_allowlist_rejects_non_audio() {
+            for ext in ["m4a", "opus", "webm", "ogg", "mp3", "MP3", "Opus"] {
+                assert!(is_allowed_audio_ext(ext), "{ext}");
+            }
+            for ext in ["exe", "bat", "html", "zip", "mp4", "mkv", ""] {
+                assert!(!is_allowed_audio_ext(ext), "{ext}");
+            }
+        }
+
+        #[test]
         fn sanitize_game_title_strips_symbols_and_editions() {
             assert_eq!(sanitize_game_title("Hades™"), "Hades");
             assert_eq!(
@@ -432,6 +555,12 @@ pub mod stores_pure {
         }
     }
     pub fn is_installer_exe(stem_lower: &str, siblings: &[String]) -> bool {
+        // `setup.exe` is ALWAYS an installer — even when it is the only exe
+        // in a folder. Treating a lone installer as a game would add
+        // installers to the library.
+        if stem_lower == "setup" {
+            return true;
+        }
         if stem_lower.contains("uninstall")
             || stem_lower.contains("unins")
             || stem_lower.contains("vcredist")
@@ -443,10 +572,24 @@ pub mod stores_pure {
         if stem_lower == "update" || stem_lower == "updater" || stem_lower.contains("updater") {
             return true;
         }
-        if stem_lower == "setup" {
-            // Installer only when the folder has another exe to be the game.
-            return siblings.iter().any(|s| s != "setup");
+        // Helper / non-game exes commonly found inside real game folders.
+        const HELPERS: &[&str] = &[
+            "crashreporter",
+            "crashhandler",
+            "unitycrashhandler",
+            "crashpad",
+            "ue4prereq",
+            "ueprereq",
+            "dotnet",
+            "benchmark",
+            "config",
+            "easyanticheat_setup",
+            "battleye",
+        ];
+        if HELPERS.iter().any(|h| stem_lower.contains(h)) {
+            return true;
         }
+        let _ = siblings; // kept for signature compatibility; no longer needed
         false
     }
     pub fn display_name_for_exe(exe_path: &Path) -> String {
@@ -493,6 +636,12 @@ pub mod stores_pure {
             return;
         };
         for entry in entries.flatten() {
+            // Never follow symlinks or directory junctions: they can loop
+            // forever or escape the configured root folder. `file_type()`
+            // does not follow links, so `is_symlink()` catches both.
+            if entry.file_type().map(|t| t.is_symlink()).unwrap_or(false) {
+                continue;
+            }
             let p = entry.path();
             if p.is_dir() {
                 // Skip obvious non-game folders to keep scans fast.
@@ -619,17 +768,55 @@ pub mod stores_pure {
             assert!(is_installer_exe("update", &empty));
             assert!(is_installer_exe("updater", &empty));
             assert!(is_installer_exe("gameupdater", &empty));
-            // setup.exe: installer only when a sibling exe exists.
+            // setup.exe is ALWAYS dropped, even when it is the only exe.
+            assert!(is_installer_exe("setup", &empty));
             assert!(is_installer_exe(
                 "setup",
                 &["setup".to_string(), "game.exe".to_string()]
             ));
-            assert!(!is_installer_exe("setup", &["setup".to_string()]));
+            // Helper / non-game exes are dropped.
+            assert!(is_installer_exe("crashreporter", &empty));
+            assert!(is_installer_exe("unitycrashhandler64", &empty));
+            assert!(is_installer_exe("ue4prereqsetup", &empty));
+            assert!(is_installer_exe("dotnet", &empty));
+            assert!(is_installer_exe("benchmark", &empty));
+            assert!(is_installer_exe("easyanticheat_setup", &empty));
+            assert!(is_installer_exe("battleye", &empty));
             // Real games are never filtered — including Launcher.exe.
             assert!(!is_installer_exe("launcher", &empty));
             assert!(!is_installer_exe("fortniteclient-win64-shipping", &empty));
             assert!(!is_installer_exe("game", &empty));
             assert!(!is_installer_exe("setup_game", &empty));
+        }
+
+        #[test]
+        fn scan_folders_does_not_follow_symlinks() {
+            let root = std::env::temp_dir().join("p4-verify-scan-link");
+            let _ = std::fs::remove_dir_all(&root);
+            let real = root.join("Real Game");
+            std::fs::create_dir_all(&real).unwrap();
+            std::fs::write(real.join("RealGame.exe"), b"x").unwrap();
+            let outside = std::env::temp_dir().join("p4-verify-scan-outside");
+            let _ = std::fs::remove_dir_all(&outside);
+            std::fs::create_dir_all(&outside).unwrap();
+            std::fs::write(outside.join("Outside.exe"), b"x").unwrap();
+            let link = root.join("Link Game");
+            #[cfg(windows)]
+            let made = std::os::windows::fs::symlink_dir(&outside, &link).is_ok();
+            #[cfg(not(windows))]
+            let made = std::os::unix::fs::symlink(&outside, &link).is_ok();
+            if !made {
+                let _ = std::fs::remove_dir_all(&root);
+                let _ = std::fs::remove_dir_all(&outside);
+                return;
+            }
+            let found = scan_folders(&[root.to_string_lossy().into_owned()]);
+            let names: Vec<&str> = found.iter().map(|f| f.name.as_str()).collect();
+            // (This crate's simpler scan names by exe stem: RealGame.exe.)
+            assert!(names.contains(&"RealGame"), "{names:?}");
+            assert!(!names.contains(&"Outside"), "{names:?}");
+            let _ = std::fs::remove_dir_all(&root);
+            let _ = std::fs::remove_dir_all(&outside);
         }
 
         #[test]
@@ -681,6 +868,51 @@ pub mod stores_pure {
             // Missing folder contributes nothing.
             assert!(scan_folders(&["/does/not/exist".to_string()]).is_empty());
             let _ = std::fs::remove_dir_all(&root);
+        }
+    }
+}
+
+pub mod launch_pure {
+    /// A Steam appid is strictly ASCII digits. Anything else must never
+    /// reach `steam://rungameid/{appid}`.
+    pub fn is_valid_appid_str(appid: &str) -> bool {
+        !appid.is_empty() && appid.chars().all(|c| c.is_ascii_digit())
+    }
+
+    /// Only a real `.exe` may be launched (never a script, shortcut, or
+    /// a path that merely happens to exist).
+    pub fn is_valid_exe_path(path: &str) -> bool {
+        let p = path.trim();
+        !p.is_empty() && p.to_lowercase().ends_with(".exe")
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn appid_must_be_ascii_digits_only() {
+            assert!(is_valid_appid_str("440"));
+            assert!(is_valid_appid_str("367520"));
+            assert!(!is_valid_appid_str(""));
+            assert!(!is_valid_appid_str("440;rm"));
+            assert!(!is_valid_appid_str("44 0"));
+            assert!(!is_valid_appid_str(
+                "440
+"
+            ));
+            assert!(!is_valid_appid_str("abc"));
+            assert!(!is_valid_appid_str("440.exe"));
+        }
+
+        #[test]
+        fn exe_path_must_end_with_exe() {
+            assert!(is_valid_exe_path(r"C:\Games\Hades\Hades.exe"));
+            assert!(is_valid_exe_path(r"C:\Games\Game\GAME.EXE"));
+            assert!(!is_valid_exe_path(""));
+            assert!(!is_valid_exe_path(r"C:\Games\Game\run.bat"));
+            assert!(!is_valid_exe_path(r"C:\Games\Game\game.lnk"));
+            assert!(!is_valid_exe_path(r"C:\Games\Game\game.exe.bak"));
         }
     }
 }

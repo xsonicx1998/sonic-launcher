@@ -136,10 +136,10 @@ var GAMES = [{"key": "astro", "name": "ASTRO\u2019S PLAYROOM", "row": "Astro\u20
 var sel = -1;
 var tileEls = [];
 function tilePlainHTML(g){
-  return '<div style="position:relative;width:100%;height:100%;border-radius:inherit;overflow:hidden"><img src="'+g.img+'" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block"></div>';
+  return '<div style="position:relative;width:100%;height:100%;border-radius:inherit;overflow:hidden"><img src="'+escHtml(g.img)+'" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block"></div>';
 }
 function tileFocusedHTML(g){
-  return '<div class="ps5-focus-ring"></div><div style="position:relative;width:100%;height:100%;border-radius:inherit;overflow:hidden"><img src="'+g.img+'" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block;animation:iconPulse 5.5s ease-in-out infinite"><div style="position:absolute;inset:-25%;background:linear-gradient(135deg,rgba(140,210,255,0) 32%,rgba(190,225,255,.55) 50%,rgba(140,210,255,0) 68%);animation:diagSweep 5.5s ease-in-out infinite;pointer-events:none"></div></div>';
+  return '<div class="ps5-focus-ring"></div><div style="position:relative;width:100%;height:100%;border-radius:inherit;overflow:hidden"><img src="'+escHtml(g.img)+'" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block;animation:iconPulse 5.5s ease-in-out infinite"><div style="position:absolute;inset:-25%;background:linear-gradient(135deg,rgba(140,210,255,0) 32%,rgba(190,225,255,.55) 50%,rgba(140,210,255,0) 68%);animation:diagSweep 5.5s ease-in-out infinite;pointer-events:none"></div></div>';
 }
 function buildRow(){
   var row = document.getElementById('row');
@@ -227,7 +227,7 @@ function setHeroBg(idx){
 }
 function render(){
   var g = GAMES[sel];
-  document.getElementById('rowTitle').innerHTML = '<span class="title-in">'+g.row+'</span> <span class="ps5-platform-badge">'+(g.platform || (g.key === 'astro' ? 'PS5' : 'PS4'))+'</span>';
+  document.getElementById('rowTitle').innerHTML = '<span class="title-in">'+escHtml(g.row)+'</span> <span class="ps5-platform-badge">'+escHtml(g.platform || (g.key === 'astro' ? 'PS5' : 'PS4'))+'</span>';
   document.getElementById('gameLogo').innerHTML = g.logo;
   document.getElementById('gameTag').textContent = g.tag;
   document.getElementById('gameMeta').textContent = g.meta;

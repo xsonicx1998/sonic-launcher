@@ -19,6 +19,8 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 ureq = { version = "2", features = ["tls"] }
 # Phase 3: base64 data-URI fallback for art/music files.
 base64 = "0.22"
+# Section 6: SHA-256 verification of the downloaded yt-dlp binary.
+sha2 = "0.10"
 # Phase 5: detect a running game process by exe name.
 sysinfo = "0.32"
 

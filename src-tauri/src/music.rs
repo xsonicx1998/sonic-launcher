@@ -22,6 +22,39 @@ use crate::db;
 use crate::http;
 
 const YTDLP_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
+const YTDLP_SUMS_URL: &str =
+    "https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS";
+
+/// SHA-256 hex digest of `bytes` (integrity check for the yt-dlp binary).
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// Parse an official `SHA2-256SUMS` file and return the expected hex digest
+/// for `filename` (lines look like `<sha256>  <filename>`).
+fn parse_sha256sums(sums: &str, filename: &str) -> Option<String> {
+    for line in sums.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let mut parts = line.split_whitespace();
+        let hash = parts.next()?;
+        let name = parts.next()?;
+        let name = name.trim_start_matches('*');
+        if name == filename && hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Some(hash.to_lowercase());
+        }
+    }
+    None
+}
 
 /// Audio extensions we accept (cached downloads + manual picks).
 const AUDIO_EXTS: &[&str] = &["m4a", "opus", "mp3", "ogg", "flac", "wav", "webm"];
@@ -208,6 +241,16 @@ pub fn ensure_ytdlp(app: &AppHandle) -> Result<String, String> {
     let exe = ytdlp_path(app)?;
     if !exe.is_file() {
         let bytes = http::download_bytes(YTDLP_URL)?;
+        // Integrity: verify the binary against the official SHA2-256SUMS
+        // from the same release before saving or running it.
+        let sums = http::download_bytes(YTDLP_SUMS_URL)?;
+        let sums = String::from_utf8_lossy(&sums);
+        let expected = parse_sha256sums(&sums, "yt-dlp.exe")
+            .ok_or_else(|| "SHA2-256SUMS has no entry for yt-dlp.exe".to_string())?;
+        let actual = sha256_hex(&bytes);
+        if actual != expected {
+            return Err("yt-dlp.exe SHA-256 mismatch — refusing to save it".to_string());
+        }
         if let Some(parent) = exe.parent() {
             std::fs::create_dir_all(parent).map_err(|e| format!("cannot create bin dir: {e}"))?;
         }
@@ -256,9 +299,24 @@ pub fn search_theme_music(
     } else {
         format!("ytsearch5:{clean} theme")
     };
+    // Hardened flags: ignore user config, no playlists, 25 MB cap,
+    // https only, and `--` so the query can never be parsed as a flag
+    // (blocks `--exec` / flag injection and `file://` redirects).
     let out = run_ytdlp(
         &exe,
-        &["--no-warnings", "--dump-json", "--flat-playlist", &query],
+        &[
+            "--ignore-config",
+            "--no-warnings",
+            "--no-playlist",
+            "--max-filesize",
+            "25M",
+            "--proto",
+            "https",
+            "--dump-json",
+            "--flat-playlist",
+            "--",
+            &query,
+        ],
     )?;
     if !out.status.success() {
         return Err(format!(
@@ -291,6 +349,13 @@ pub fn download_theme_music(
     game_key: &str,
     video_id: &str,
 ) -> Result<String, String> {
+    if video_id.is_empty()
+        || video_id
+            .chars()
+            .any(|c| !(c.is_ascii_alphanumeric() || c == '-' || c == '_'))
+    {
+        return Err("invalid video id".to_string());
+    }
     let url = format!("https://www.youtube.com/watch?v={video_id}");
     download_audio_from_url(app, game_key, &url, "youtube", video_id)
 }
@@ -308,8 +373,13 @@ pub fn download_theme_music_from_url(
     if url.is_empty() {
         return Err("music URL is empty".to_string());
     }
-    if !(url.starts_with("http://") || url.starts_with("https://")) {
-        return Err("music URL must start with http:// or https://".to_string());
+    // Strict: https only, and no whitespace or newlines anywhere (a
+    // newline could smuggle a second flag/URL into the yt-dlp call).
+    if !url.starts_with("https://") {
+        return Err("music URL must start with https://".to_string());
+    }
+    if url.chars().any(|c| c.is_whitespace()) {
+        return Err("music URL must not contain whitespace".to_string());
     }
     let fallback_title = url.to_string();
     download_audio_from_url(app, game_key, url, source, &fallback_title)
@@ -331,15 +401,23 @@ fn download_audio_from_url(
         ensure_ytdlp(app)?;
     }
     let template = dir.join(format!("{game_key}.%(ext)s"));
+    // Native audio only (no ffmpeg): m4a / webm / opus / mp3 / ogg.
+    // `--` keeps the URL from ever being parsed as a flag.
     let out = run_ytdlp(
         &exe,
         &[
+            "--ignore-config",
             "--no-warnings",
             "--no-playlist",
+            "--max-filesize",
+            "25M",
+            "--proto",
+            "https",
             "-f",
-            "bestaudio[ext=m4a]/bestaudio[ext=opus]/bestaudio",
+            "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio[ext=opus]/bestaudio[ext=mp3]/bestaudio[ext=ogg]",
             "-o",
             &template.to_string_lossy(),
+            "--",
             url,
         ],
     )?;
@@ -352,10 +430,32 @@ fn download_audio_from_url(
     let Some(path) = music_file_for_key(&dir, game_key) else {
         return Err("download finished but no audio file appeared".to_string());
     };
+    // Integrity: only a native audio container may land in the cache.
+    const AUDIO_EXTS: &[&str] = &["m4a", "opus", "webm", "ogg", "mp3"];
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    if !AUDIO_EXTS.contains(&ext.as_str()) {
+        let _ = std::fs::remove_file(&path);
+        return Err(format!("downloaded file has a disallowed extension: {ext}"));
+    }
     // Best-effort title lookup for the music table.
     let title = match run_ytdlp(
         &exe,
-        &["--no-warnings", "--no-playlist", "--get-title", url],
+        &[
+            "--ignore-config",
+            "--no-warnings",
+            "--no-playlist",
+            "--max-filesize",
+            "25M",
+            "--proto",
+            "https",
+            "--get-title",
+            "--",
+            url,
+        ],
     ) {
         Ok(t) if t.status.success() => {
             let s = String::from_utf8_lossy(&t.stdout).trim().to_string();

@@ -219,6 +219,47 @@ fn steamgriddb_key(app: &AppHandle) -> Option<String> {
     }
 }
 
+/// 10 MB cap for a single artwork download.
+const MAX_ART_BYTES: usize = 10 * 1024 * 1024;
+
+/// JPEG (FF D8 FF), PNG (89 50 4E 47 0D 0A 1A 0A), WebP (RIFF xxxx WEBP).
+fn is_image_bytes(b: &[u8]) -> bool {
+    if b.len() >= 3 && b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF {
+        return true; // JPEG
+    }
+    if b.len() >= 8 && b[..8] == [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] {
+        return true; // PNG
+    }
+    if b.len() >= 12 && &b[0..4] == b"RIFF" && &b[8..12] == b"WEBP" {
+        return true; // WebP
+    }
+    false
+}
+
+/// Download an artwork image with validation: 10 MB max, and the bytes
+/// must start with a JPEG / PNG / WebP magic signature before anything
+/// is written to disk. Returns `true` when a file was written, `false`
+/// on a cache hit or a failed / oversized / invalid download.
+fn download_art(url: &str, dest: &PathBuf, auth: Option<&str>) -> bool {
+    if let Ok(meta) = std::fs::metadata(dest) {
+        if meta.len() > 0 {
+            return false; // cache hit
+        }
+    }
+    let Ok(bytes) = crate::http::download_bytes_with_header(url, auth) else {
+        return false;
+    };
+    if bytes.len() > MAX_ART_BYTES || !is_image_bytes(&bytes) {
+        return false;
+    }
+    if let Some(parent) = dest.parent() {
+        if std::fs::create_dir_all(parent).is_err() {
+            return false;
+        }
+    }
+    std::fs::write(dest, bytes).is_ok()
+}
+
 /// Download (or reuse from cache) the art for one game.
 ///
 /// - Steam games (`appid` set): Steam CDN first.
@@ -237,9 +278,9 @@ pub fn get_game_art(app: &AppHandle, game_key: &str, appid: Option<u32>, name: &
 
     if let Some(id) = appid {
         let (header_url, hero_url, capsule_url) = steam_cdn_urls(id);
-        let _ = crate::http::download_to(&header_url, &tile);
-        let _ = crate::http::download_to(&hero_url, &hero);
-        let _ = crate::http::download_to(&capsule_url, &capsule);
+        download_art(&header_url, &tile, None);
+        download_art(&hero_url, &hero, None);
+        download_art(&capsule_url, &capsule, None);
         return build_art(&tile, &hero, &capsule);
     }
 
@@ -249,20 +290,12 @@ pub fn get_game_art(app: &AppHandle, game_key: &str, appid: Option<u32>, name: &
             if let Some((game_id, _)) = results.into_iter().next() {
                 if let Ok((grid, hero_url)) = sgdb_images(&key, game_id) {
                     if let Some(grid_url) = grid {
-                        let _ = crate::http::download_to_with_header(
-                            &grid_url,
-                            &tile,
-                            Some(&sgdb_auth(&key)),
-                        );
+                        download_art(&grid_url, &tile, Some(&sgdb_auth(&key)));
                         // The portrait grid doubles as the capsule.
                         let _ = std::fs::copy(&tile, &capsule);
                     }
                     if let Some(url) = hero_url {
-                        let _ = crate::http::download_to_with_header(
-                            &url,
-                            &hero,
-                            Some(&sgdb_auth(&key)),
-                        );
+                        download_art(&url, &hero, Some(&sgdb_auth(&key)));
                     }
                 }
             }
@@ -291,6 +324,18 @@ mod tests {
             c,
             "https://cdn.cloudflare.steamstatic.com/steam/apps/440/library_600x900.jpg"
         );
+    }
+
+    #[test]
+    fn is_image_bytes_accepts_jpeg_png_webp_and_rejects_html() {
+        assert!(is_image_bytes(&[0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10]));
+        assert!(is_image_bytes(&[
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00
+        ]));
+        assert!(is_image_bytes(b"RIFF\x00\x00\x00\x00WEBPVP8 "));
+        assert!(!is_image_bytes(b"<!DOCTYPE html>"));
+        assert!(!is_image_bytes(b""));
+        assert!(!is_image_bytes(b"RIFF\x00\x00\x00\x00XXXX"));
     }
 
     #[test]

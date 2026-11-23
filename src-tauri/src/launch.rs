@@ -30,6 +30,11 @@ fn launch_exe(exe_path: &str) -> Result<(), String> {
     if !Path::new(path).is_file() {
         return Err(format!("exe not found: {path}"));
     }
+    // Only a real `.exe` may be launched (never a script, shortcut, or
+    // a path that merely happens to exist).
+    if !path.to_lowercase().ends_with(".exe") {
+        return Err(format!("not an .exe: {path}"));
+    }
     // Detached spawn: the child keeps running after the launcher exits,
     // and the launcher never blocks on it.
     let mut cmd = Command::new(path);

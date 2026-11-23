@@ -523,6 +523,12 @@ fn walk_exes(dir: &Path, depth: u32, max_depth: u32, out: &mut Vec<PathBuf>) {
         return;
     };
     for entry in entries.flatten() {
+        // Never follow symlinks or directory junctions: they can loop
+        // forever or escape the configured root folder. `file_type()`
+        // does not follow links, so `is_symlink()` catches both.
+        if entry.file_type().map(|t| t.is_symlink()).unwrap_or(false) {
+            continue;
+        }
         let p = entry.path();
         if p.is_dir() {
             // Skip obvious non-game folders to keep scans fast.
@@ -917,6 +923,43 @@ mod tests {
         // Missing folder contributes nothing.
         assert!(scan_folders(&["/does/not/exist".to_string()], &ignored).is_empty());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn scan_folders_does_not_follow_symlinks() {
+        // A symlink (or Windows junction) inside the scan root is never
+        // followed: the target game must not appear twice, and a link
+        // pointing outside the root must not pull outside games in.
+        let root = std::env::temp_dir().join("p4-verify-scan-link");
+        let _ = std::fs::remove_dir_all(&root);
+        let real = root.join("Real Game");
+        std::fs::create_dir_all(&real).unwrap();
+        std::fs::write(real.join("RealGame.exe"), b"x").unwrap();
+        let outside = std::env::temp_dir().join("p4-verify-scan-outside");
+        let _ = std::fs::remove_dir_all(&outside);
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("Outside.exe"), b"x").unwrap();
+        // Try to create the link; skip the test if the OS refuses
+        // (Windows needs Developer Mode / admin for symlinks).
+        let link = root.join("Link Game");
+        #[cfg(windows)]
+        let made = std::os::windows::fs::symlink_dir(&outside, &link).is_ok();
+        #[cfg(not(windows))]
+        let made = std::os::unix::fs::symlink(&outside, &link).is_ok();
+        if !made {
+            let _ = std::fs::remove_dir_all(&root);
+            let _ = std::fs::remove_dir_all(&outside);
+            return;
+        }
+        let ignored: HashSet<String> = HashSet::new();
+        let found = scan_folders(&[root.to_string_lossy().into_owned()], &ignored);
+        let names: Vec<&str> = found.iter().map(|f| f.name.as_str()).collect();
+        assert!(names.contains(&"Real Game"), "{names:?}");
+        // The outside game (reachable only via the link) must NOT appear.
+        assert!(!names.contains(&"Outside"), "{names:?}");
+        assert_eq!(found.len(), 1, "{names:?}");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
     }
 
     #[test]

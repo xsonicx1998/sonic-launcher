@@ -11,7 +11,8 @@
         "height": 1080,
         "resizable": true,
         "title": "Sonic Launcher",
-        "width": 1920
+        "width": 1920,
+        "additionalBrowserArgs": "--disable-gpu"
       }
     ],
     "withGlobalTauri": true

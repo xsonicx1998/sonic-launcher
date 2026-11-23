@@ -5,7 +5,9 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": ["$APPDATA/**"]
+        "scope": [
+          "$APPDATA/**"
+        ]
       }
     },
     "windows": [
@@ -15,7 +17,8 @@
         "height": 1080,
         "resizable": true,
         "title": "Sonic Launcher",
-        "width": 1920
+        "width": 1920,
+        "additionalBrowserArgs": "--autoplay-policy=no-user-gesture-required"
       }
     ],
     "withGlobalTauri": true
@@ -39,5 +42,5 @@
   },
   "identifier": "com.sonic.launcher",
   "productName": "Sonic Launcher",
-  "version": "0.2.0"
+  "version": "0.2.1"
 }

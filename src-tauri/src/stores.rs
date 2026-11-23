@@ -141,6 +141,33 @@ fn reg_string(hive: winreg::HKEY, path: &str, value: &str) -> Option<String> {
 /// Pick the best exe inside an install dir: prefer one whose name
 /// contains a word from the game name, otherwise the largest exe.
 /// Installer/updater exes are skipped. `None` when nothing fits.
+/// Pick the best exe from a list of candidates for one game folder.
+/// Prefers an exe whose stem matches a word (>= 3 chars) of the folder
+/// name, else the largest exe by file size (usually the game binary).
+fn pick_best_exe(exes: &[PathBuf], folder_name: &str) -> Option<PathBuf> {
+    if exes.is_empty() {
+        return None;
+    }
+    let words: Vec<&str> = folder_name
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| w.len() >= 3)
+        .collect();
+    for cand in exes {
+        let stem = cand
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        if words.iter().any(|w| stem.contains(&w.to_lowercase())) {
+            return Some(cand.clone());
+        }
+    }
+    // Fallback: the largest exe (usually the game binary).
+    exes.iter()
+        .max_by_key(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
+        .cloned()
+}
+
 fn best_exe_in_dir(dir: &Path, game_name: &str) -> Option<PathBuf> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return None;
@@ -179,25 +206,8 @@ fn best_exe_in_dir(dir: &Path, game_name: &str) -> Option<PathBuf> {
     if candidates.is_empty() {
         return None;
     }
-    let words: Vec<&str> = game_name
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|w| w.len() >= 3)
-        .collect();
-    for cand in &candidates {
-        let stem = cand
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_lowercase();
-        if words.iter().any(|w| stem.contains(&w.to_lowercase())) {
-            return Some((*cand).clone());
-        }
-    }
-    // Fallback: the largest exe (usually the game binary).
-    candidates
-        .into_iter()
-        .max_by_key(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
-        .cloned()
+    let owned: Vec<PathBuf> = candidates.into_iter().cloned().collect();
+    pick_best_exe(&owned, game_name)
 }
 
 /// GOG Galaxy games from the registry.
@@ -423,6 +433,12 @@ pub fn detect_other_stores() -> Vec<DetectedGame> {
 /// Pure — unit-tested. `siblings` is the list of lowercased exe stems in
 /// the same directory (including this one).
 pub fn is_installer_exe(stem_lower: &str, siblings: &[String]) -> bool {
+    // `setup.exe` is ALWAYS an installer — even when it is the only exe in
+    // a folder. Treating a lone installer as a game would add installers
+    // to the library.
+    if stem_lower == "setup" {
+        return true;
+    }
     if stem_lower.contains("uninstall")
         || stem_lower.contains("unins")
         || stem_lower.contains("vcredist")
@@ -434,10 +450,24 @@ pub fn is_installer_exe(stem_lower: &str, siblings: &[String]) -> bool {
     if stem_lower == "update" || stem_lower == "updater" || stem_lower.contains("updater") {
         return true;
     }
-    if stem_lower == "setup" {
-        // Installer only when the folder has another exe to be the game.
-        return siblings.iter().any(|s| s != "setup");
+    // Helper / non-game exes commonly found inside real game folders.
+    const HELPERS: &[&str] = &[
+        "crashreporter",
+        "crashhandler",
+        "unitycrashhandler",
+        "crashpad",
+        "ue4prereq",
+        "ueprereq",
+        "dotnet",
+        "benchmark",
+        "config",
+        "easyanticheat_setup",
+        "battleye",
+    ];
+    if HELPERS.iter().any(|h| stem_lower.contains(h)) {
+        return true;
     }
+    let _ = siblings; // kept for signature compatibility; no longer needed
     false
 }
 
@@ -523,56 +553,135 @@ fn walk_exes(dir: &Path, depth: u32, max_depth: u32, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Scan folders for game exes (max depth 4), filter installers, dedupe
-/// by path. Never errors — missing folders are skipped silently.
-pub fn scan_folders(folders: &[String]) -> Vec<ScannedFound> {
-    let mut found: Vec<PathBuf> = Vec::new();
+/// Scan folders for games (max depth 4). One best exe per top-level game
+/// folder under each user-configured root — so an Unreal game with a root
+/// exe plus a `Binaries\Win64\` exe contributes ONE game, not two.
+/// Exes directly in the root are each their own game. Installers, helpers
+/// and paths in `ignored` are dropped. Never errors — missing folders are
+/// skipped silently.
+pub fn scan_folders(folders: &[String], ignored: &HashSet<String>) -> Vec<ScannedFound> {
+    let mut out: Vec<ScannedFound> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
     for folder in folders {
         let dir = PathBuf::from(folder);
-        if dir.is_dir() {
-            walk_exes(&dir, 0, 4, &mut found);
+        if !dir.is_dir() {
+            continue;
         }
-    }
-    // Group exes by parent dir for the `setup.exe` sibling rule.
-    let mut by_dir: std::collections::HashMap<PathBuf, Vec<String>> =
-        std::collections::HashMap::new();
-    for p in &found {
-        if let Some(parent) = p.parent() {
+        let mut all: Vec<PathBuf> = Vec::new();
+        walk_exes(&dir, 0, 4, &mut all);
+        let mut exes: Vec<PathBuf> = Vec::new();
+        for p in all {
             let stem = p
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("")
                 .to_lowercase();
-            by_dir.entry(parent.to_path_buf()).or_default().push(stem);
+            if is_installer_exe(&stem, &[]) {
+                continue;
+            }
+            let key = p.to_string_lossy().to_lowercase();
+            if ignored.contains(&key) {
+                continue;
+            }
+            exes.push(p);
         }
-    }
-    let mut seen: HashSet<String> = HashSet::new();
-    let mut out = Vec::new();
-    for p in found {
-        let stem = p
-            .file_stem()
-            .and_then(|s| s.to_str())
+        if exes.is_empty() {
+            continue;
+        }
+        let root_name = dir
+            .file_name()
+            .and_then(|n| n.to_str())
             .unwrap_or("")
-            .to_lowercase();
-        let siblings = p
-            .parent()
-            .and_then(|par| by_dir.get(par))
-            .cloned()
-            .unwrap_or_default();
-        if is_installer_exe(&stem, &siblings) {
-            continue;
+            .to_string();
+        // Single-game-folder escape: if the best exe of the whole tree
+        // matches the root folder's name, the root IS one game (the user
+        // added the game's own folder, which may have bin/ + engine/
+        // subdirs). Otherwise each immediate subdir is one game folder.
+        if let Some(best) = pick_best_exe(&exes, &root_name) {
+            let stem = best
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            if exe_stem_matches_folder(&stem, &root_name) {
+                let name = game_name_for_group(&root_name, &best);
+                push_found(&mut out, &mut seen, &best, &name);
+                continue;
+            }
         }
-        let key = p.to_string_lossy().to_lowercase();
-        if !seen.insert(key) {
-            continue;
+        // Group by immediate child directory of the root.
+        let mut by_dir: std::collections::HashMap<PathBuf, Vec<PathBuf>> =
+            std::collections::HashMap::new();
+        let mut direct: Vec<PathBuf> = Vec::new();
+        for p in exes {
+            let rel = match p.strip_prefix(&dir) {
+                Ok(r) => r.to_path_buf(),
+                Err(_) => {
+                    direct.push(p);
+                    continue;
+                }
+            };
+            let mut comps = rel.components();
+            match comps.next() {
+                Some(std::path::Component::Normal(first)) if comps.next().is_some() => {
+                    by_dir.entry(dir.join(first)).or_default().push(p);
+                }
+                _ => direct.push(p),
+            }
         }
-        out.push(ScannedFound {
-            name: display_name_for_exe(&p),
-            exe_path: p.to_string_lossy().into_owned(),
-        });
+        for p in direct {
+            let name = display_name_for_exe(&p);
+            push_found(&mut out, &mut seen, &p, &name);
+        }
+        for (game_dir, group) in by_dir {
+            let folder_name = game_dir
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("Game")
+                .to_string();
+            if let Some(best) = pick_best_exe(&group, &folder_name) {
+                let name = game_name_for_group(&folder_name, &best);
+                push_found(&mut out, &mut seen, &best, &name);
+            }
+        }
     }
     out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     out
+}
+
+/// Does an exe stem match its folder name (alphanumeric, case-insensitive,
+/// prefix match either way)? Used to recognise a root that IS one game.
+fn exe_stem_matches_folder(stem_lower: &str, folder_name: &str) -> bool {
+    let norm = |s: &str| {
+        s.chars()
+            .filter(|c| c.is_alphanumeric())
+            .collect::<String>()
+            .to_lowercase()
+    };
+    let f = norm(folder_name);
+    let s = norm(stem_lower);
+    !f.is_empty() && (s.starts_with(&f) || f.starts_with(&s))
+}
+
+/// Game name for a folder group: the folder name, unless it is a generic
+/// word, in which case fall back to the exe-derived name.
+fn game_name_for_group(folder_name: &str, exe_path: &Path) -> String {
+    let generic = ["launcher", "game", "client", "main", "start", "play"];
+    if !folder_name.trim().is_empty() && !generic.contains(&folder_name.to_lowercase().as_str()) {
+        return prettify(folder_name);
+    }
+    display_name_for_exe(exe_path)
+}
+
+fn push_found(out: &mut Vec<ScannedFound>, seen: &mut HashSet<String>, exe: &Path, name: &str) {
+    let key = exe.to_string_lossy().to_lowercase();
+    if !seen.insert(key) {
+        return;
+    }
+    out.push(ScannedFound {
+        name: name.to_string(),
+        exe_path: exe.to_string_lossy().into_owned(),
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -708,12 +817,24 @@ mod tests {
         assert!(is_installer_exe("update", &empty));
         assert!(is_installer_exe("updater", &empty));
         assert!(is_installer_exe("gameupdater", &empty));
-        // setup.exe: installer only when a sibling exe exists.
+        // setup.exe: ALWAYS an installer, even when alone in a folder.
         assert!(is_installer_exe(
             "setup",
             &["setup".to_string(), "game.exe".to_string()]
         ));
-        assert!(!is_installer_exe("setup", &["setup".to_string()]));
+        assert!(is_installer_exe("setup", &["setup".to_string()]));
+        // Helper / non-game exes inside real game folders.
+        assert!(is_installer_exe("crashreporter", &empty));
+        assert!(is_installer_exe("crashhandler", &empty));
+        assert!(is_installer_exe("unitycrashhandler", &empty));
+        assert!(is_installer_exe("crashpad_handler", &empty));
+        assert!(is_installer_exe("ue4prereqsetup_x64", &empty));
+        assert!(is_installer_exe("ueprereqsetup_x64", &empty));
+        assert!(is_installer_exe("dotnet", &empty));
+        assert!(is_installer_exe("benchmark", &empty));
+        assert!(is_installer_exe("gameconfig", &empty));
+        assert!(is_installer_exe("easyanticheat_setup", &empty));
+        assert!(is_installer_exe("battleye", &empty));
         // Real games are never filtered — including Launcher.exe.
         assert!(!is_installer_exe("launcher", &empty));
         assert!(!is_installer_exe("fortniteclient-win64-shipping", &empty));
@@ -749,26 +870,72 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         let game = root.join("My Game");
         let other = root.join("Other Game");
+        let ue = root.join("UE Game");
+        let ue_bin = ue.join("Binaries").join("Win64");
+        let inst_only = root.join("Installer Only");
         std::fs::create_dir_all(&game).unwrap();
         std::fs::create_dir_all(&other).unwrap();
+        std::fs::create_dir_all(&ue_bin).unwrap();
+        std::fs::create_dir_all(&inst_only).unwrap();
         std::fs::write(game.join("MyGame.exe"), b"x").unwrap();
-        std::fs::write(game.join("setup.exe"), b"x").unwrap(); // dropped: sibling exists
+        std::fs::write(game.join("setup.exe"), b"x").unwrap(); // dropped: always
         std::fs::write(game.join("unins000.exe"), b"x").unwrap(); // dropped
+        std::fs::write(game.join("CrashReporter.exe"), b"x").unwrap(); // dropped: helper
         std::fs::write(other.join("Launcher.exe"), b"x").unwrap(); // kept, folder name
         std::fs::write(other.join("sub").join("Deep.exe"), b"x").unwrap_or_else(|_| {
             std::fs::create_dir_all(other.join("sub")).unwrap();
             std::fs::write(other.join("sub").join("Deep.exe"), b"x").unwrap();
         });
-        let found = scan_folders(&[root.to_string_lossy().into_owned()]);
+        // UE-style: root exe + Binaries\Win64\ exe -> ONE game, not two.
+        std::fs::write(ue.join("UEGame.exe"), b"xx").unwrap();
+        std::fs::write(ue_bin.join("UEGame-Win64-Shipping.exe"), b"x").unwrap();
+        // A folder with ONLY setup.exe contributes nothing.
+        std::fs::write(inst_only.join("setup.exe"), b"x").unwrap();
+        // A loose exe directly in the root is its own game.
+        std::fs::write(root.join("Loose.exe"), b"x").unwrap();
+        let ignored: HashSet<String> = HashSet::new();
+        let found = scan_folders(&[root.to_string_lossy().into_owned()], &ignored);
         let names: Vec<&str> = found.iter().map(|f| f.name.as_str()).collect();
-        assert!(names.contains(&"MyGame"), "{names:?}");
+        assert!(names.contains(&"My Game"), "{names:?}");
         assert!(names.contains(&"Other Game"), "{names:?}");
-        assert!(names.contains(&"Deep"), "{names:?}");
+        assert!(names.contains(&"UE Game"), "{names:?}");
+        assert!(names.contains(&"Loose"), "{names:?}");
+        // Deep.exe is inside the "Other Game" group, not a separate game.
+        assert!(!names.contains(&"Deep"), "{names:?}");
         assert!(!names.iter().any(|n| n.to_lowercase().contains("setup")));
         assert!(!names.iter().any(|n| n.to_lowercase().contains("unins")));
-        assert_eq!(found.len(), 3);
+        assert!(!names.iter().any(|n| n.to_lowercase().contains("crash")));
+        assert_eq!(found.len(), 4);
+        // Ignored paths are skipped.
+        let ignored_exe = game.join("MyGame.exe").to_string_lossy().to_lowercase();
+        let mut ignored: HashSet<String> = HashSet::new();
+        ignored.insert(ignored_exe);
+        let found2 = scan_folders(&[root.to_string_lossy().into_owned()], &ignored);
+        let names2: Vec<&str> = found2.iter().map(|f| f.name.as_str()).collect();
+        assert!(!names2.contains(&"My Game"), "{names2:?}");
+        assert_eq!(found2.len(), 3);
         // Missing folder contributes nothing.
-        assert!(scan_folders(&["/does/not/exist".to_string()]).is_empty());
+        assert!(scan_folders(&["/does/not/exist".to_string()], &ignored).is_empty());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn scan_folders_single_game_folder_escape() {
+        // A root that IS one game (name matches its exe) yields one game,
+        // even though it has bin/ + engine/ subdirs.
+        let game_root = std::env::temp_dir().join("Cyberpunk 2077");
+        let _ = std::fs::remove_dir_all(&game_root);
+        std::fs::create_dir_all(game_root.join("bin").join("x64")).unwrap();
+        std::fs::create_dir_all(game_root.join("engine")).unwrap();
+        std::fs::write(
+            game_root.join("bin").join("x64").join("Cyberpunk2077.exe"),
+            b"xx",
+        )
+        .unwrap();
+        let ignored: HashSet<String> = HashSet::new();
+        let found = scan_folders(&[game_root.to_string_lossy().into_owned()], &ignored);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].name, "Cyberpunk 2077");
+        let _ = std::fs::remove_dir_all(&game_root);
     }
 }

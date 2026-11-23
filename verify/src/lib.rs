@@ -154,6 +154,8 @@ pub mod music_pure {
         pub id: String,
         pub title: String,
         pub duration_secs: Option<u64>,
+        pub url: String,
+        pub source: String,
     }
     pub fn music_file_for_key(dir: &Path, game_key: &str) -> Option<PathBuf> {
         for ext in AUDIO_EXTS {
@@ -168,7 +170,7 @@ pub mod music_pure {
         let Some(d) = duration_secs else {
             return false;
         };
-        if !(60..=360).contains(&d) {
+        if !(45..=480).contains(&d) {
             return false;
         }
         let lower = title.to_lowercase();
@@ -184,11 +186,74 @@ pub mod music_pure {
         let id = v.get("id")?.as_str()?.to_string();
         let title = v.get("title")?.as_str()?.to_string();
         let duration_secs = v.get("duration").and_then(|d| d.as_u64());
+        let url = v
+            .get("webpage_url")
+            .and_then(|u| u.as_str())
+            .or_else(|| v.get("url").and_then(|u| u.as_str()))
+            .unwrap_or("")
+            .to_string();
+        let extractor = v
+            .get("extractor")
+            .and_then(|e| e.as_str())
+            .unwrap_or("youtube")
+            .to_lowercase();
+        let source = if extractor.contains("soundcloud") {
+            "soundcloud".to_string()
+        } else {
+            "youtube".to_string()
+        };
         Some(MusicCandidate {
             id,
             title,
             duration_secs,
+            url,
+            source,
         })
+    }
+
+    pub fn sanitize_game_title(title: &str) -> String {
+        let mut s: String = title
+            .chars()
+            .filter(|c| !matches!(c, '™' | '®' | '©' | '℠'))
+            .collect();
+        const SUFFIXES: &[&str] = &[
+            "game of the year edition",
+            "definitive edition",
+            "director's cut",
+            "directors cut",
+            "enhanced edition",
+            "special edition",
+            "complete edition",
+            "remastered",
+            "remaster",
+            "goty",
+        ];
+        let mut lower = s.to_lowercase();
+        for suf in SUFFIXES {
+            while let Some(pos) = lower.find(suf) {
+                s.replace_range(pos..pos + suf.len(), "");
+                lower = s.to_lowercase();
+            }
+        }
+        let mut out = String::new();
+        let mut last_space = true;
+        for c in s.chars() {
+            if c.is_whitespace() {
+                if !last_space {
+                    out.push(' ');
+                }
+                last_space = true;
+            } else if c == '-' || c == ':' || c == '—' || c == '–' {
+                if !last_space {
+                    out.push(' ');
+                }
+                last_space = true;
+            } else {
+                out.push(c);
+                last_space = false;
+            }
+        }
+        out.trim().to_string()
     }
     #[cfg(test)]
     mod tests {
@@ -200,14 +265,14 @@ pub mod music_pure {
                 "Astro's Playroom - Main Theme",
                 Some(180)
             ));
-            assert!(theme_candidate_ok("Doom Eternal Theme", Some(60)));
-            assert!(theme_candidate_ok("Doom Eternal Theme", Some(360)));
+            assert!(theme_candidate_ok("Doom Eternal Theme", Some(45)));
+            assert!(theme_candidate_ok("Doom Eternal Theme", Some(480)));
         }
 
         #[test]
         fn filter_rejects_out_of_range_durations() {
-            assert!(!theme_candidate_ok("Game Theme", Some(59)));
-            assert!(!theme_candidate_ok("Game Theme", Some(361)));
+            assert!(!theme_candidate_ok("Game Theme", Some(44)));
+            assert!(!theme_candidate_ok("Game Theme", Some(481)));
             assert!(!theme_candidate_ok("Game Theme", None));
             assert!(!theme_candidate_ok("Game Theme", Some(0)));
         }
@@ -241,16 +306,22 @@ pub mod music_pure {
                     id: "a".into(),
                     title: "Game Theme (cover)".into(),
                     duration_secs: Some(120),
+                    url: "".into(),
+                    source: "youtube".into(),
                 },
                 MusicCandidate {
                     id: "b".into(),
                     title: "Game Theme 1 Hour".into(),
                     duration_secs: Some(120),
+                    url: "".into(),
+                    source: "youtube".into(),
                 },
                 MusicCandidate {
                     id: "c".into(),
                     title: "Game Theme".into(),
                     duration_secs: Some(200),
+                    url: "".into(),
+                    source: "youtube".into(),
                 },
             ];
             assert_eq!(pick_theme_candidate(&cands).unwrap().id, "c");
@@ -258,6 +329,8 @@ pub mod music_pure {
                 id: "x".into(),
                 title: "Game Theme remix".into(),
                 duration_secs: Some(100),
+                url: "".into(),
+                source: "youtube".into(),
             }];
             assert!(pick_theme_candidate(&none).is_none());
         }
@@ -265,15 +338,33 @@ pub mod music_pure {
         #[test]
         fn parse_search_line_reads_flat_playlist_json() {
             let c = parse_search_line(
-                r#"{"id":"dQw4w9WgXcQ","title":"Game Theme","duration":187,"ie_key":"Youtube"}"#,
+                r#"{"id":"dQw4w9WgXcQ","title":"Game Theme","duration":187,"ie_key":"Youtube","webpage_url":"https://www.youtube.com/watch?v=dQw4w9WgXcQ","extractor":"youtube"}"#,
             )
             .unwrap();
             assert_eq!(c.id, "dQw4w9WgXcQ");
             assert_eq!(c.duration_secs, Some(187));
+            assert_eq!(c.url, "https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+            assert_eq!(c.source, "youtube");
+            let sc = parse_search_line(
+                r#"{"id":"12345","title":"Indie Theme","duration":200,"webpage_url":"https://soundcloud.com/artist/indie-theme","extractor":"soundcloud"}"#,
+            )
+            .unwrap();
+            assert_eq!(sc.source, "soundcloud");
             let no_dur = parse_search_line(r#"{"id":"abc","title":"No Duration"}"#).unwrap();
             assert_eq!(no_dur.duration_secs, None);
             assert!(parse_search_line("not json").is_none());
             assert!(parse_search_line(r#"{"title":"missing id"}"#).is_none());
+        }
+
+        #[test]
+        fn sanitize_game_title_strips_symbols_and_editions() {
+            assert_eq!(sanitize_game_title("Hades™"), "Hades");
+            assert_eq!(
+                sanitize_game_title("The Witcher 3: Wild Hunt — Game of the Year Edition"),
+                "The Witcher 3 Wild Hunt"
+            );
+            assert_eq!(sanitize_game_title("Elden Ring GOTY"), "Elden Ring");
+            assert_eq!(sanitize_game_title("Astro's Playroom"), "Astro's Playroom");
         }
 
         #[test]

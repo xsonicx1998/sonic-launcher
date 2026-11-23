@@ -22,6 +22,7 @@
 mod art;
 mod db;
 mod http;
+mod khinsider;
 mod launch;
 mod music;
 mod playtime;
@@ -95,8 +96,15 @@ fn ensure_ytdlp(app: AppHandle) -> Result<String, String> {
 fn search_theme_music(
     app: AppHandle,
     game_name: String,
+    fallback: Option<bool>,
+    source: Option<String>,
 ) -> Result<Vec<music::MusicCandidate>, String> {
-    music::search_theme_music(&app, &game_name)
+    music::search_theme_music(
+        &app,
+        &game_name,
+        fallback.unwrap_or(false),
+        source.as_deref().unwrap_or("youtube"),
+    )
 }
 
 #[tauri::command]
@@ -106,6 +114,67 @@ fn download_theme_music(
     video_id: String,
 ) -> Result<String, String> {
     music::download_theme_music(&app, &game_key, &video_id)
+}
+
+#[tauri::command]
+fn download_theme_music_url(
+    app: AppHandle,
+    game_key: String,
+    url: String,
+    source: Option<String>,
+) -> Result<String, String> {
+    music::download_theme_music_from_url(&app, &game_key, &url, source.as_deref().unwrap_or("url"))
+}
+
+#[tauri::command]
+fn pick_ambient_file(app: AppHandle) -> Result<Option<String>, String> {
+    music::pick_ambient_file(&app)
+}
+
+/// KHInsider fallback: search + download the game's theme track in one
+/// call. Returns the cached path, or `None` when KHInsider has nothing
+/// for the game (or is blocked) — the caller falls through to the next
+/// source.
+#[tauri::command]
+fn download_khinsider_theme(
+    app: AppHandle,
+    game_key: String,
+    game_name: String,
+) -> Result<Option<String>, String> {
+    let track = khinsider::search_khinsider_track(&game_name)?;
+    let Some(track) = track else {
+        return Ok(None);
+    };
+    let path = khinsider::download_khinsider_track(&app, &game_key, &track)?;
+    Ok(Some(path))
+}
+
+/// The user-overridable SFX folder: `%APPDATA%\com.sonic.launcher\sfx\`.
+/// Created on startup so users can drop their own sound pack here.
+/// The SFX engine looks here first, then falls back to `dist/sfx/`.
+#[tauri::command]
+fn get_sfx_dir(app: AppHandle) -> Result<String, String> {
+    use tauri::Manager;
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("cannot resolve app data dir: {e}"))?
+        .join("sfx");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create sfx dir: {e}"))?;
+    Ok(dir.to_string_lossy().into_owned())
+}
+
+/// Open the SFX folder in Windows Explorer.
+#[tauri::command]
+fn open_sfx_folder(app: AppHandle) -> Result<(), String> {
+    let dir = get_sfx_dir(app)?;
+    open::that(dir).map_err(|e| format!("cannot open sfx folder: {e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+fn get_app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
 }
 
 #[tauri::command]
@@ -132,11 +201,20 @@ fn detect_other_stores() -> Vec<stores::DetectedGame> {
 
 #[tauri::command]
 fn scan_folders(app: AppHandle, folders: Vec<String>) -> Vec<stores::ScannedFound> {
-    let found = stores::scan_folders(&folders);
+    let ignored: std::collections::HashSet<String> = db::list_ignored_paths(&app)
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
+    let found = stores::scan_folders(&folders, &ignored);
     for f in &found {
         let _ = db::add_scanned_game(&app, &f.name, &f.exe_path);
     }
     found
+}
+
+#[tauri::command]
+fn remove_scanned_game(app: AppHandle, id: i64) -> Result<(), String> {
+    db::remove_scanned_game(&app, id)
 }
 
 #[tauri::command]
@@ -245,11 +323,18 @@ fn main() {
             ensure_ytdlp,
             search_theme_music,
             download_theme_music,
+            download_theme_music_url,
+            download_khinsider_theme,
+            get_sfx_dir,
+            open_sfx_folder,
+            pick_ambient_file,
+            get_app_version,
             get_game_music,
             pick_music_file,
             get_music_data_uri,
             detect_other_stores,
             scan_folders,
+            remove_scanned_game,
             list_all_games,
             add_scan_folder,
             list_scan_folders,

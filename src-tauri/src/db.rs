@@ -67,6 +67,10 @@ fn open(app: &AppHandle) -> Result<Connection, String> {
             exe_path TEXT NOT NULL UNIQUE,
             source   TEXT NOT NULL DEFAULT 'scan',
             added_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS ignored_paths (
+            path       TEXT PRIMARY KEY,
+            removed_at INTEGER NOT NULL
         );",
     )
     .map_err(|e| format!("cannot create table: {e}"))?;
@@ -344,6 +348,11 @@ pub fn add_scanned_game(
     name: &str,
     exe_path: &str,
 ) -> Result<Option<i64>, String> {
+    // Never re-add a path the user explicitly removed.
+    let ignored = list_ignored_paths(app).unwrap_or_default();
+    if ignored.contains(&exe_path.trim().to_lowercase()) {
+        return Ok(None);
+    }
     let conn = open(app)?;
     let changed = conn
         .execute(
@@ -383,10 +392,49 @@ pub fn list_scanned_games(app: &AppHandle) -> Result<Vec<ScannedGame>, String> {
     Ok(out)
 }
 
-/// Remove one scanned game by id.
+/// Remove one scanned game by id AND remember its exe path in
+/// `ignored_paths`, so the next scan never re-adds a game the user
+/// explicitly removed.
 pub fn remove_scanned_game(app: &AppHandle, id: i64) -> Result<(), String> {
     let conn = open(app)?;
+    let exe_path: Option<String> = conn
+        .query_row(
+            "SELECT exe_path FROM scanned_games WHERE id = ?1",
+            params![id],
+            |row| row.get(0),
+        )
+        .ok();
     conn.execute("DELETE FROM scanned_games WHERE id = ?1", params![id])
         .map_err(|e| format!("cannot remove scanned game: {e}"))?;
+    if let Some(path) = exe_path {
+        let _ = ignore_scanned_path(app, &path);
+    }
     Ok(())
+}
+
+/// Remember an exe path as ignored (never re-add it on a rescan).
+pub fn ignore_scanned_path(app: &AppHandle, exe_path: &str) -> Result<(), String> {
+    let conn = open(app)?;
+    conn.execute(
+        "INSERT OR REPLACE INTO ignored_paths (path, removed_at) VALUES (?1, ?2)",
+        params![exe_path.trim().to_lowercase(), now_unix()],
+    )
+    .map_err(|e| format!("cannot ignore path: {e}"))?;
+    Ok(())
+}
+
+/// All ignored exe paths (lowercased), for the scan filter.
+pub fn list_ignored_paths(app: &AppHandle) -> Result<Vec<String>, String> {
+    let conn = open(app)?;
+    let mut stmt = conn
+        .prepare("SELECT path FROM ignored_paths")
+        .map_err(|e| format!("cannot list ignored paths: {e}"))?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| format!("cannot list ignored paths: {e}"))?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.map_err(|e| format!("cannot read ignored path: {e}"))?);
+    }
+    Ok(out)
 }

@@ -3,7 +3,7 @@
 //! Flow: yt-dlp.exe is downloaded once (first run) into
 //! `%APPDATA%\com.sonic.launcher\bin\`. Theme search runs
 //! `yt-dlp "ytsearch5:{game} theme" --dump-json --flat-playlist`; the
-//! smart filter picks the first result that is 60–360s and whose title
+//! smart filter picks the first result that is 45–480s and whose title
 //! has none of the excluded words. Downloads are audio-only in the
 //! native container — NO ffmpeg is involved. Cached files live in
 //! `%APPDATA%\com.sonic.launcher\music\{game_key}.{ext}` and are never
@@ -39,6 +39,10 @@ pub struct MusicCandidate {
     pub id: String,
     pub title: String,
     pub duration_secs: Option<u64>,
+    /// Direct page URL (YouTube watch link or SoundCloud track link).
+    pub url: String,
+    /// "youtube" or "soundcloud".
+    pub source: String,
 }
 
 /// A cached/selected theme-music file, as exposed to the frontend.
@@ -88,13 +92,13 @@ pub fn music_file_for_key(dir: &Path, game_key: &str) -> Option<PathBuf> {
     None
 }
 
-/// Smart filter: duration must be 60–360s and the title must not contain
+/// Smart filter: duration must be 45–480s and the title must not contain
 /// any excluded word. Pure — unit-tested.
 pub fn theme_candidate_ok(title: &str, duration_secs: Option<u64>) -> bool {
     let Some(d) = duration_secs else {
         return false;
     };
-    if !(60..=360).contains(&d) {
+    if !(45..=480).contains(&d) {
         return false;
     }
     let lower = title.to_lowercase();
@@ -114,11 +118,80 @@ pub fn parse_search_line(line: &str) -> Option<MusicCandidate> {
     let id = v.get("id")?.as_str()?.to_string();
     let title = v.get("title")?.as_str()?.to_string();
     let duration_secs = v.get("duration").and_then(|d| d.as_u64());
+    let url = v
+        .get("webpage_url")
+        .and_then(|u| u.as_str())
+        .or_else(|| v.get("url").and_then(|u| u.as_str()))
+        .unwrap_or("")
+        .to_string();
+    // yt-dlp flat-playlist JSON carries the extractor name.
+    let extractor = v
+        .get("extractor")
+        .and_then(|e| e.as_str())
+        .unwrap_or("youtube")
+        .to_lowercase();
+    let source = if extractor.contains("soundcloud") {
+        "soundcloud".to_string()
+    } else {
+        "youtube".to_string()
+    };
     Some(MusicCandidate {
         id,
         title,
         duration_secs,
+        url,
+        source,
     })
+}
+
+/// Clean a game title for search: strip trademark symbols and edition
+/// suffixes that break the query (e.g. "™", "Director's Cut",
+/// "Definitive Edition", "GOTY").
+pub fn sanitize_game_title(title: &str) -> String {
+    let mut s: String = title
+        .chars()
+        .filter(|c| !matches!(c, '™' | '®' | '©' | '℠'))
+        .collect();
+    const SUFFIXES: &[&str] = &[
+        "game of the year edition",
+        "definitive edition",
+        "director's cut",
+        "directors cut",
+        "enhanced edition",
+        "special edition",
+        "complete edition",
+        "remastered",
+        "remaster",
+        "goty",
+    ];
+    let mut lower = s.to_lowercase();
+    for suf in SUFFIXES {
+        // Remove the suffix wherever it appears (usually at the end).
+        while let Some(pos) = lower.find(suf) {
+            s.replace_range(pos..pos + suf.len(), "");
+            lower = s.to_lowercase();
+        }
+    }
+    // Collapse leftover double spaces / trailing separators.
+    let mut out = String::new();
+    let mut last_space = true;
+    for c in s.chars() {
+        if c.is_whitespace() {
+            if !last_space {
+                out.push(' ');
+            }
+            last_space = true;
+        } else if c == '-' || c == ':' || c == '—' || c == '–' {
+            if !last_space {
+                out.push(' ');
+            }
+            last_space = true;
+        } else {
+            out.push(c);
+            last_space = false;
+        }
+    }
+    out.trim().to_string()
 }
 
 fn run_ytdlp(exe: &Path, args: &[&str]) -> Result<std::process::Output, String> {
@@ -154,15 +227,35 @@ pub fn ensure_ytdlp(app: &AppHandle) -> Result<String, String> {
     Ok(version)
 }
 
-/// Search YouTube for a game's theme music. Returns the top 5 results
-/// (title + duration), unfiltered — the frontend shows them in
+/// Search for a game's theme music. Returns the top 5 results
+/// (title + duration + url), unfiltered — the frontend shows them in
 /// "Change Theme Music", and the auto-pick applies the smart filter.
-pub fn search_theme_music(app: &AppHandle, game_name: &str) -> Result<Vec<MusicCandidate>, String> {
+/// `fallback` switches the YouTube query to `soundtrack OST`;
+/// `source` "soundcloud" searches SoundCloud instead of YouTube.
+/// The game title is sanitized first (trademarks / edition suffixes).
+pub fn search_theme_music(
+    app: &AppHandle,
+    game_name: &str,
+    fallback: bool,
+    source: &str,
+) -> Result<Vec<MusicCandidate>, String> {
     let exe = ytdlp_path(app)?;
     if !exe.is_file() {
         ensure_ytdlp(app)?;
     }
-    let query = format!("ytsearch5:{game_name} theme");
+    let clean = sanitize_game_title(game_name);
+    let clean = if clean.is_empty() {
+        game_name.trim().to_string()
+    } else {
+        clean
+    };
+    let query = if source.eq_ignore_ascii_case("soundcloud") {
+        format!("scsearch5:{clean} theme")
+    } else if fallback {
+        format!("ytsearch5:{clean} soundtrack OST")
+    } else {
+        format!("ytsearch5:{clean} theme")
+    };
     let out = run_ytdlp(
         &exe,
         &["--no-warnings", "--dump-json", "--flat-playlist", &query],
@@ -198,6 +291,37 @@ pub fn download_theme_music(
     game_key: &str,
     video_id: &str,
 ) -> Result<String, String> {
+    let url = format!("https://www.youtube.com/watch?v={video_id}");
+    download_audio_from_url(app, game_key, &url, "youtube", video_id)
+}
+
+/// Download a theme track from any direct URL (SoundCloud track, a pasted
+/// YouTube/SoundCloud/Bandcamp link, ...). Same cache + rules as the
+/// YouTube download. `source` is stored in the music table.
+pub fn download_theme_music_from_url(
+    app: &AppHandle,
+    game_key: &str,
+    url: &str,
+    source: &str,
+) -> Result<String, String> {
+    let url = url.trim();
+    if url.is_empty() {
+        return Err("music URL is empty".to_string());
+    }
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err("music URL must start with http:// or https://".to_string());
+    }
+    let fallback_title = url.to_string();
+    download_audio_from_url(app, game_key, url, source, &fallback_title)
+}
+
+fn download_audio_from_url(
+    app: &AppHandle,
+    game_key: &str,
+    url: &str,
+    source: &str,
+    fallback_title: &str,
+) -> Result<String, String> {
     let dir = music_dir(app)?;
     if let Some(existing) = music_file_for_key(&dir, game_key) {
         return Ok(existing.to_string_lossy().into_owned());
@@ -206,7 +330,6 @@ pub fn download_theme_music(
     if !exe.is_file() {
         ensure_ytdlp(app)?;
     }
-    let url = format!("https://www.youtube.com/watch?v={video_id}");
     let template = dir.join(format!("{game_key}.%(ext)s"));
     let out = run_ytdlp(
         &exe,
@@ -217,7 +340,7 @@ pub fn download_theme_music(
             "bestaudio[ext=m4a]/bestaudio[ext=opus]/bestaudio",
             "-o",
             &template.to_string_lossy(),
-            &url,
+            url,
         ],
     )?;
     if !out.status.success() {
@@ -232,19 +355,19 @@ pub fn download_theme_music(
     // Best-effort title lookup for the music table.
     let title = match run_ytdlp(
         &exe,
-        &["--no-warnings", "--no-playlist", "--get-title", &url],
+        &["--no-warnings", "--no-playlist", "--get-title", url],
     ) {
         Ok(t) if t.status.success() => {
             let s = String::from_utf8_lossy(&t.stdout).trim().to_string();
             if s.is_empty() {
-                video_id.to_string()
+                fallback_title.to_string()
             } else {
                 s
             }
         }
-        _ => video_id.to_string(),
+        _ => fallback_title.to_string(),
     };
-    db::save_music(app, game_key, "youtube", &path.to_string_lossy(), &title)?;
+    db::save_music(app, game_key, source, &path.to_string_lossy(), &title)?;
     Ok(path.to_string_lossy().into_owned())
 }
 
@@ -300,6 +423,25 @@ pub fn pick_music_file(app: &AppHandle, game_key: &str) -> Result<Option<String>
     Ok(Some(dest.to_string_lossy().into_owned()))
 }
 
+/// Pick an ambient audio file (stored in settings, played for games with
+/// no theme music). Returns the path, or `None` when cancelled.
+pub fn pick_ambient_file(app: &AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("Audio", &["mp3", "m4a", "opus", "ogg", "flac", "wav"])
+        .set_title("Choose ambient music")
+        .blocking_pick_file();
+    let Some(file) = picked else {
+        return Ok(None);
+    };
+    let Some(path) = file.as_path() else {
+        return Err("picked file has no local path".to_string());
+    };
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
 /// Base64 data URI of a game's cached music file (fallback when the
 /// asset protocol cannot serve it). `None` when no file is cached.
 pub fn get_music_data_uri(app: &AppHandle, game_key: &str) -> Result<Option<String>, String> {
@@ -333,14 +475,14 @@ mod tests {
             "Astro's Playroom - Main Theme",
             Some(180)
         ));
-        assert!(theme_candidate_ok("Doom Eternal Theme", Some(60)));
-        assert!(theme_candidate_ok("Doom Eternal Theme", Some(360)));
+        assert!(theme_candidate_ok("Doom Eternal Theme", Some(45)));
+        assert!(theme_candidate_ok("Doom Eternal Theme", Some(480)));
     }
 
     #[test]
     fn filter_rejects_out_of_range_durations() {
-        assert!(!theme_candidate_ok("Game Theme", Some(59)));
-        assert!(!theme_candidate_ok("Game Theme", Some(361)));
+        assert!(!theme_candidate_ok("Game Theme", Some(44)));
+        assert!(!theme_candidate_ok("Game Theme", Some(481)));
         assert!(!theme_candidate_ok("Game Theme", None));
         assert!(!theme_candidate_ok("Game Theme", Some(0)));
     }
@@ -398,15 +540,47 @@ mod tests {
     #[test]
     fn parse_search_line_reads_flat_playlist_json() {
         let c = parse_search_line(
-            r#"{"id":"dQw4w9WgXcQ","title":"Game Theme","duration":187,"ie_key":"Youtube"}"#,
+            r#"{"id":"dQw4w9WgXcQ","title":"Game Theme","duration":187,"ie_key":"Youtube","webpage_url":"https://www.youtube.com/watch?v=dQw4w9WgXcQ","extractor":"youtube"}"#,
         )
         .unwrap();
         assert_eq!(c.id, "dQw4w9WgXcQ");
         assert_eq!(c.duration_secs, Some(187));
+        assert_eq!(c.url, "https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+        assert_eq!(c.source, "youtube");
+        let sc = parse_search_line(
+            r#"{"id":"12345","title":"Indie Theme","duration":200,"webpage_url":"https://soundcloud.com/artist/indie-theme","extractor":"soundcloud"}"#,
+        )
+        .unwrap();
+        assert_eq!(sc.source, "soundcloud");
+        assert!(sc.url.contains("soundcloud.com"));
         let no_dur = parse_search_line(r#"{"id":"abc","title":"No Duration"}"#).unwrap();
         assert_eq!(no_dur.duration_secs, None);
         assert!(parse_search_line("not json").is_none());
         assert!(parse_search_line(r#"{"title":"missing id"}"#).is_none());
+    }
+
+    #[test]
+    fn sanitize_game_title_strips_symbols_and_editions() {
+        assert_eq!(sanitize_game_title("Hades™"), "Hades");
+        assert_eq!(sanitize_game_title("Cyberpunk 2077®"), "Cyberpunk 2077");
+        assert_eq!(
+            sanitize_game_title("The Witcher 3: Wild Hunt — Game of the Year Edition"),
+            "The Witcher 3 Wild Hunt"
+        );
+        assert_eq!(
+            sanitize_game_title("Doom Eternal - Definitive Edition"),
+            "Doom Eternal"
+        );
+        assert_eq!(
+            sanitize_game_title("Death Stranding Director's Cut"),
+            "Death Stranding"
+        );
+        assert_eq!(sanitize_game_title("Elden Ring GOTY"), "Elden Ring");
+        assert_eq!(
+            sanitize_game_title("Hollow Knight Remastered"),
+            "Hollow Knight"
+        );
+        assert_eq!(sanitize_game_title("Astro's Playroom"), "Astro's Playroom");
     }
 
     #[test]

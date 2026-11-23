@@ -8,22 +8,43 @@
 <body>
 <div style="box-sizing:border-box;font-family:'Inter','Noto Sans Arabic','Segoe UI Variable','Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;width:100vw;height:100vh;max-width:none;margin:0;border-radius:0;overflow:hidden;background:#000;color:#fff;position:relative">
   <div id="boot" onclick="skipBoot()" style="position:absolute;inset:0;background:#000;z-index:30;display:flex;align-items:center;justify-content:center;cursor:pointer">
-    <style>@keyframes rise{0%{transform:translateY(20px);opacity:0}20%{opacity:1}100%{transform:translateY(-100vh);opacity:0}}</style>
-    <div id="bootLogo" style="color:#fff;font-size:110px;font-weight:800;letter-spacing:-6px">PS</div>
-    <div id="bootWarn" style="display:none;max-width:640px;font-size:13px;line-height:1.7;color:rgba(255,255,255,.85);padding:0 40px">PHOTOSENSITIVE EPILEPSY: IF YOU HAVE A HISTORY OF EPILEPSY OR SEIZURES, CONSULT A DOCTOR BEFORE USE. CERTAIN PATTERNS MAY TRIGGER SEIZURES WITH NO PRIOR HISTORY. BEFORE USING THIS PRODUCT, CAREFULLY READ THE INSTRUCTION MANUAL.</div>
-    <div id="bootParticles" style="display:none;position:absolute;inset:0;overflow:hidden"></div>
+    <style>@keyframes rise{0%{transform:translateY(20px);opacity:0}20%{opacity:1}100%{transform:translateY(-100vh);opacity:0}}@keyframes bootSway{0%{transform:translateX(0)}50%{transform:translateX(7px)}100%{transform:translateX(0)}}@keyframes bootGlowPulse{0%,100%{opacity:.5}50%{opacity:.85}}</style>
+    <div style="position:absolute;inset:0;background:radial-gradient(ellipse 60% 45% at 50% 55%,rgba(255,190,90,.14),rgba(255,190,90,0) 70%),radial-gradient(ellipse 45% 35% at 50% 45%,rgba(120,90,255,.10),rgba(120,90,255,0) 70%);animation:bootGlowPulse 2.4s ease-in-out infinite"></div>
+    <div id="bootLogo" style="position:relative;color:#fff;font-size:clamp(64px,9vw,120px);font-weight:800;letter-spacing:.14em;text-shadow:0 0 24px rgba(255,255,255,.55),0 0 64px rgba(160,120,255,.35)">SONIC</div>
+    <div id="bootParticles" style="position:absolute;inset:0;overflow:hidden"></div>
   </div>
+  <style>
+  /* ---- Boot-to-Home entrance choreography ---- */
+  @keyframes homeBgSettle{from{transform:scale(1.07)}to{transform:scale(1)}}
+  @keyframes homeTopIn{from{opacity:0;transform:translateY(-14px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes homeTileIn{from{opacity:0;transform:translateY(20px) scale(.92)}to{transform:translateY(0) scale(1)}}
+  @keyframes homeHeroIn{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+  body.home-entering #bgStack{animation:homeBgSettle 750ms var(--ps5-ease) both;will-change:transform}
+  body.home-entering #topBar{animation:homeTopIn 450ms var(--ps5-ease) 100ms both}
+  body.home-entering #row .game-tile{animation:homeTileIn 500ms var(--ps5-ease) both}
+  body.home-entering #row .game-tile:nth-child(1){animation-delay:0ms}
+  body.home-entering #row .game-tile:nth-child(2){animation-delay:45ms}
+  body.home-entering #row .game-tile:nth-child(3){animation-delay:90ms}
+  body.home-entering #row .game-tile:nth-child(4){animation-delay:135ms}
+  body.home-entering #row .game-tile:nth-child(5){animation-delay:180ms}
+  body.home-entering #row .game-tile:nth-child(6){animation-delay:225ms}
+  body.home-entering #row .game-tile:nth-child(7){animation-delay:270ms}
+  body.home-entering #row .game-tile:nth-child(8){animation-delay:315ms}
+  body.home-entering #row .game-tile:nth-child(9){animation-delay:360ms}
+  body.home-entering #row .game-tile:nth-child(10){animation-delay:405ms}
+  body.home-entering #heroBlock,body.home-entering #heroCard{animation:homeHeroIn 500ms var(--ps5-ease) 220ms both}
+  </style>
   <div id="bgStack" style="position:absolute;inset:0;overflow:hidden;background:#000;z-index:0"></div>
   <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.72) 0%,rgba(0,0,0,.48) 22%,rgba(0,0,0,.18) 36%,rgba(0,0,0,0) 48%),linear-gradient(0deg,rgba(0,0,0,.82) 0%,rgba(0,0,0,.45) 32%,rgba(0,0,0,0) 62%),radial-gradient(ellipse 75% 65% at 15% 95%,rgba(0,0,0,.65) 0%,rgba(0,0,0,0) 72%)"></div>
   <div id="toast" style="position:absolute;top:16px;right:clamp(28px,3.6vw,64px);font-size:14px;font-weight:400;color:rgba(255,255,255,.96);text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65);z-index:5;opacity:0">Logged in to Sonic Launcher.</div>
-  <div style="position:relative;z-index:2;padding:clamp(22px,2.4vw,38px) clamp(28px,3.6vw,64px) 0;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)">
+  <div id="topBar" style="position:relative;z-index:2;padding:clamp(22px,2.4vw,38px) clamp(28px,3.6vw,64px) 0;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)">
     <div style="display:flex;align-items:center">
       <span style="font-size:clamp(18px,1.35vw,24px);font-weight:500;color:rgba(255,255,255,.98)">Games</span><span style="font-size:clamp(18px,1.35vw,24px);font-weight:300;color:rgba(255,255,255,.52);margin-left:32px">Media</span>
       <span style="margin-left:auto;display:flex;align-items:center;gap:20px;font-size:16px;color:rgba(255,255,255,.92)"><span style="position:relative;cursor:pointer" onclick="showLbl('lblSearch')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg><span id="lblSearch" style="display:none;position:absolute;top:28px;left:50%;transform:translateX(-50%);font-size:11px;white-space:nowrap">Search</span></span><span style="position:relative;cursor:pointer" onclick="showLbl('lblSettings');openSettings()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span id="lblSettings" style="display:none;position:absolute;top:28px;left:50%;transform:translateX(-50%);font-size:11px;white-space:nowrap">Settings</span></span><span style="position:relative;width:26px;height:26px;display:inline-flex;flex:none"><span style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#8B20FF,#00C8FF);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:500">M</span><span style="position:absolute;right:-1px;bottom:-1px;width:8px;height:8px;border-radius:50%;background:#2fd45a;border:1.5px solid rgba(0,0,0,.55)"></span></span><span id="clock" style="font-size:clamp(17px,1.25vw,22px);font-weight:300;letter-spacing:.02em;font-variant-numeric:tabular-nums">19:30</span></span>
     </div>
     <div class="ps5-row-viewport" style="margin-top:14px"><div id="row" class="ps5-row-track"></div><div id="rowTitle" class="focused-game-title"></div></div>
   </div>
-  <div style="position:absolute;z-index:2;left:clamp(28px,3.6vw,64px);bottom:clamp(48px,6.5vh,84px);max-width:clamp(470px,44vw,740px)">
+  <div id="heroBlock" style="position:absolute;z-index:2;left:clamp(28px,3.6vw,64px);bottom:clamp(48px,6.5vh,84px);max-width:clamp(470px,44vw,740px)">
     <div id="gameLogo" style="font-size:clamp(34px,3.2vw,54px);font-weight:500;line-height:1.05;letter-spacing:.01em;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)"></div>
     <div id="gameTag" style="font-size:clamp(14.5px,1.15vw,19px);font-weight:400;color:rgba(255,255,255,.96);margin-top:10px;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)"></div>
     <div id="gameMeta" style="font-size:12px;font-weight:300;color:rgba(255,255,255,.58);margin-top:6px;font-variant-numeric:tabular-nums;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)"></div>
@@ -32,7 +53,7 @@
       <div class="ps5-action-btn" tabindex="0" onclick="toggleGameMenu()" style="width:clamp(44px,3.4vw,54px);border-radius:50%;font-size:15px;cursor:pointer"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg></div>
     </div>
   </div>
-  <div style="position:absolute;z-index:2;right:clamp(28px,3.6vw,64px);bottom:clamp(48px,6.5vh,84px);width:clamp(230px,18vw,310px)">
+  <div id="heroCard" style="position:absolute;z-index:2;right:clamp(28px,3.6vw,64px);bottom:clamp(48px,6.5vh,84px);width:clamp(230px,18vw,310px)">
     <div style="position:relative;border-radius:10px;overflow:hidden;box-shadow:0 6px 24px rgba(0,0,0,.5)"><img id="cardImg" style="width:clamp(230px,18vw,310px);aspect-ratio:16/9;height:auto;object-fit:cover;display:block"><div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.45) 0%,rgba(0,0,0,0) 30%,rgba(0,0,0,0) 55%,rgba(0,0,0,.55) 100%);pointer-events:none"></div><div style="position:absolute;top:8px;left:8px;font-size:11px;font-weight:500;border:1px solid rgba(255,255,255,.45);border-radius:4px;padding:1px 6px;opacity:.78;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)">Full Game</div><div id="cardPrice" style="position:absolute;bottom:8px;left:10px;font-size:12.5px;font-weight:500;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65);font-variant-numeric:tabular-nums"></div></div>
     <div style="background:rgba(18,22,30,.55);backdrop-filter:blur(20px);border-radius:12px;border:1px solid rgba(255,255,255,.08);padding:12px 14px;margin-top:8px"><div style="display:flex;gap:10px;align-items:center">
       <span style="display:flex;align-items:center;justify-content:center;width:20px;height:20px;color:rgba(255,255,255,.96);flex:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M7 3h10v6a5 5 0 0 1-10 0V3z"/><path d="M7 5H4a3 3 0 0 0 3 3"/><path d="M17 5h3a3 3 0 0 1-3 3"/><path d="M12 14v4"/><path d="M8 21h8"/><path d="M10 18h4"/></svg></span>
@@ -69,10 +90,21 @@
         <label style="margin-left:16px">Volume <input id="musicVolume" type="range" min="0" max="100" value="30" onchange="saveMusicVolume(this)" oninput="saveMusicVolume(this)" style="vertical-align:-3px;width:120px"></label>
       </div>
       <div style="margin-bottom:12px"><label><input id="minOnLaunch" type="checkbox" checked onchange="saveMinOnLaunch(this)" style="vertical-align:-2px"> Minimize launcher when a game starts</label></div>
+      <div style="margin-bottom:12px"><label><input id="skipBoot" type="checkbox" onchange="saveSkipBoot(this)" style="vertical-align:-2px"> Skip Boot Animation</label></div>
+      <div style="margin-bottom:12px"><label><input id="sfxEnabled" type="checkbox" checked onchange="saveSfxToggle(this)" style="vertical-align:-2px"> UI Sound Effects</label>
+        <label style="margin-left:16px">Volume <input id="sfxVolume" type="range" min="0" max="100" value="80" onchange="saveSfxVolume(this)" oninput="saveSfxVolume(this)" style="vertical-align:-3px;width:120px"></label>
+      </div>
+      <div style="margin-bottom:12px"><button onclick="openSfxFolder()" style="padding:7px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.3);background:rgba(0,200,255,.25);color:#fff;cursor:pointer;font-size:13px">Open SFX Folder</button> <span style="color:rgba(255,255,255,.55);font-size:12px">Drop your own sounds here &mdash; boot, nav, select, launch, back, cc_open, ambient (.mp3 / .wav / .ogg / .m4a)</span></div>
       <div>Scan folders <span style="color:rgba(255,255,255,.55);font-size:12px">(extra folders to search for games)</span>
         <div id="scanFolderList" style="margin-top:6px;font-size:12.5px;color:rgba(255,255,255,.75)"></div>
         <button onclick="addScanFolderFlow()" style="margin-top:8px;padding:7px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.3);background:rgba(0,200,255,.25);color:#fff;cursor:pointer;font-size:13px">Add folder&hellip;</button>
       </div>
+      <div style="margin-top:12px">Ambient music <span style="color:rgba(255,255,255,.55);font-size:12px">(played for games with no theme music)</span><br>
+        <span id="ambientStatus" style="font-size:12.5px;color:rgba(255,255,255,.75)">Not set &mdash; silent for games without a theme.</span>
+        <button onclick="pickAmbientFile()" style="margin-left:8px;padding:7px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.3);background:rgba(0,200,255,.25);color:#fff;cursor:pointer;font-size:13px">Choose file&hellip;</button>
+        <button onclick="clearAmbientFile()" style="margin-left:6px;padding:7px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.3);background:transparent;color:rgba(255,255,255,.75);cursor:pointer;font-size:13px">Clear</button>
+      </div>
+      <div id="appVersion" style="margin-top:14px;font-size:12px;color:rgba(255,255,255,.45)">Sonic Launcher</div>
     </div>
     <div style="display:flex;margin-top:26px">
       <div style="width:340px;margin-left:110px;font-size:16px;color:rgba(255,255,255,.85)">
@@ -124,7 +156,7 @@ function buildRow(){
     d.className = 'game-tile';
     d.style.cursor = 'pointer';
     d.innerHTML = tilePlainHTML(g);
-    d.onclick = function(){ selectGame(i); };
+    d.onclick = function(){ playSfx('nav'); selectGame(i); };
     row.appendChild(d);
     tileEls.push(d);
   });
@@ -232,19 +264,65 @@ function selectGame(i){
   scheduleThemeMusic();
   loadRealPlaytime();
 }
-function toggleCC(){ var c = document.getElementById('cc'); c.style.display = (c.style.display === 'none' || c.style.display === '') ? 'block' : 'none'; document.getElementById('powerMenu').style.display = 'none'; }
-function openPower(){ document.getElementById('powerMenu').style.display = 'block'; }
-function closePower(){ document.getElementById('powerMenu').style.display = 'none'; }
-function openSettings(){ document.getElementById('settings').style.display = 'block'; populateLauncherSettings(); }
-function closeSettings(){ document.getElementById('settings').style.display = 'none'; }
+function toggleCC(){ var c = document.getElementById('cc'); var opening = (c.style.display === 'none' || c.style.display === ''); c.style.display = opening ? 'block' : 'none'; document.getElementById('powerMenu').style.display = 'none'; playSfx(opening ? 'cc_open' : 'back'); }
+function openPower(){ playSfx('select'); document.getElementById('powerMenu').style.display = 'block'; }
+function closePower(){ var el = document.getElementById('powerMenu'); if(el && el.style.display !== 'none'){ el.style.display = 'none'; playSfx('back'); } }
+function openSettings(){ playSfx('select'); document.getElementById('settings').style.display = 'block'; populateLauncherSettings(); }
+function closeSettings(){ var el = document.getElementById('settings'); if(el && el.style.display !== 'none'){ el.style.display = 'none'; playSfx('back'); } }
 var now = new Date(); var hh=now.getHours(),ap=hh>=12?'PM':'AM';hh=hh%12;if(hh===0)hh=12;document.getElementById('clock').textContent = hh+':'+('0'+now.getMinutes()).slice(-2)+' '+ap;
 
 
 window.addEventListener('resize', function(){ if(sel >= 0){ anchorRow(); } });
 buildRow(); selectGame(0);
-function spawnParticles(p){ p.innerHTML=''; for(var i=0;i<26;i++){ var s=document.createElement('div'); var sz=(3+Math.random()*7); s.style.cssText='position:absolute;bottom:-10px;left:'+(Math.random()*100)+'%;width:'+sz+'px;height:'+sz+'px;border-radius:50%;background:'+(Math.random()>.5?'#FFD98A':'#fff')+';opacity:.9;filter:blur(1px);animation:rise '+(2.2+Math.random()*2)+'s ease-in '+(Math.random()*1.2)+'s forwards'; p.appendChild(s); } }
-function bootSeq(){ var b=document.getElementById('boot'); b.style.display='flex'; b.style.opacity='1'; b.style.transition=''; document.getElementById('bootLogo').style.display='block'; document.getElementById('bootWarn').style.display='none'; document.getElementById('bootParticles').style.display='none'; setTimeout(function(){ document.getElementById('bootLogo').style.display='none'; document.getElementById('bootWarn').style.display='block'; },1400); setTimeout(function(){ document.getElementById('bootWarn').style.display='none'; var p=document.getElementById('bootParticles'); p.style.display='block'; spawnParticles(p); },3200); setTimeout(function(){ b.style.transition='opacity .8s'; b.style.opacity='0'; setTimeout(function(){ b.style.display='none'; },850); },5200); }
-function skipBoot(){ var b=document.getElementById('boot'); b.style.transition=''; b.style.display='none'; }
+function isBootVisible(){ var b=document.getElementById('boot'); return !!(b && b.style.display !== 'none'); }
+function spawnParticles(p){
+  p.innerHTML='';
+  var colors=['#FFD98A','#FFB347','#FFE9B8','#fff','#FFC46B'];
+  for(var i=0;i<34;i++){
+    var s=document.createElement('div');
+    var sz=3+Math.random()*11;
+    var c=colors[Math.floor(Math.random()*colors.length)];
+    var dur=2.4+Math.random()*2.6, delay=Math.random()*1.4, sway=1.2+Math.random()*1.6;
+    s.style.cssText='position:absolute;bottom:-14px;left:'+(Math.random()*100)+'%;width:'+sz+'px;height:'+sz+'px;border-radius:50%;background:radial-gradient(circle,'+c+' 0%,'+c+'55 60%,transparent 75%);opacity:.85;filter:blur('+(sz>9?1.5:0.5)+'px);animation:rise '+dur+'s ease-in '+delay+'s forwards, bootSway '+sway+'s ease-in-out '+delay+'s infinite alternate';
+    p.appendChild(s);
+  }
+}
+/* Run the home entrance cascade (also used when the boot is skipped). */
+function enterHome(){
+  document.body.classList.remove('home-entering');
+  void document.body.offsetWidth;
+  document.body.classList.add('home-entering');
+  setTimeout(function(){
+    var el = tileEls[sel+1];
+    if(el && GAMES[sel]){ el.innerHTML = tileFocusedHTML(GAMES[sel]); }
+  }, 550);
+  setTimeout(function(){ document.body.classList.remove('home-entering'); }, 1100);
+}
+var bootToken = 0;
+function bootSeq(){
+  var b=document.getElementById('boot');
+  var token=++bootToken;
+  getSetting('skip_boot','0').then(function(v){
+    if(token !== bootToken){ return; }
+    if(v === '1'){ skipBoot(); return; }
+    b.style.display='flex'; b.style.opacity='1'; b.style.transition='';
+    playBootSfx();
+    var p=document.getElementById('bootParticles');
+    p.style.display='block'; spawnParticles(p);
+    setTimeout(function(){
+      if(token !== bootToken){ return; }
+      enterHome();
+      b.style.transition='opacity 700ms ease'; b.style.opacity='0';
+      setTimeout(function(){ if(token === bootToken){ b.style.display='none'; } }, 750);
+    }, 1500);
+  });
+}
+function skipBoot(){
+  bootToken++;
+  var b=document.getElementById('boot');
+  b.style.transition=''; b.style.opacity='0'; b.style.display='none';
+  enterHome();
+}
 function replayBoot(){ bootSeq(); }
 function selPower(i){ var items=document.querySelectorAll('.pwItem'); items.forEach(function(el,j){ if(j===i){ el.style.border='1.5px solid rgba(255,255,255,.85)'; el.style.background='rgba(255,255,255,.12)'; } else { el.style.border='1.5px solid transparent'; el.style.background='transparent'; } var d=el.querySelector('.pwDesc'); if(d){ d.style.display=(j===i)?'block':'none'; } }); }
 function showLbl(id){ ['lblSearch','lblSettings'].forEach(function(x){ var e=document.getElementById(x); if(e){ e.style.display=(x===id)?'block':'none'; } }); }
@@ -285,6 +363,10 @@ function mapUnifiedGame(u){
     var parts = String(u.key).split('-');
     g.manualId = parseInt(parts[parts.length - 1], 10) || null;
   }
+  if(u.source === 'scan' && u.key){
+    var sparts = String(u.key).split('-');
+    g.scanId = parseInt(sparts[sparts.length - 1], 10) || null;
+  }
   return g;
 }
 /* Replace the demo row with real games when any exist; otherwise keep demos. */
@@ -316,6 +398,7 @@ function stopRunningPoll(win){
   if(runningPoll){ clearInterval(runningPoll); runningPoll = null; }
   document.body.classList.remove('game-running');
   if(win && win.show){ win.show().catch(function(){}); }
+  resumeHomeAudio();
   if(currentSessionId){
     var core = tauriCore();
     if(core){ core.invoke('end_playtime_session', { sessionId: currentSessionId }).catch(function(){}); }
@@ -345,7 +428,9 @@ function launchSelected(){
   var core = tauriCore();
   if(!core){ showToast('Launcher backend not available'); return; }
   var args = (g.source === 'steam') ? { appid: g.appid } : { exePath: g.exePath };
+  playSfx('launch');
   stopThemeMusic();
+  stopPs5Ambient(0.6);
   core.invoke('launch_game', args).then(function(){
     var w = null;
     try { w = (window.__TAURI__.window && window.__TAURI__.window.getCurrentWindow) ? window.__TAURI__.window.getCurrentWindow() : null; } catch(e){}
@@ -397,8 +482,9 @@ function removeManualGame(id){
 }
 /* Keyboard: Left/Right move, Enter plays, Esc closes panels. */
 document.addEventListener('keydown', function(e){
-  if(e.key === 'ArrowLeft'){ selectGame(Math.max(0, sel - 1)); e.preventDefault(); }
-  else if(e.key === 'ArrowRight'){ selectGame(Math.min(GAMES.length - 1, sel + 1)); e.preventDefault(); }
+  if(isBootVisible()){ skipBoot(); e.preventDefault(); return; }
+  if(e.key === 'ArrowLeft'){ playSfx('nav'); selectGame(Math.max(0, sel - 1)); e.preventDefault(); }
+  else if(e.key === 'ArrowRight'){ playSfx('nav'); selectGame(Math.min(GAMES.length - 1, sel + 1)); e.preventDefault(); }
   else if(e.key === 'Enter'){ launchSelected(); e.preventDefault(); }
   else if(e.key === 'Escape'){ closeSettings(); closePower(); hideGameMenu(); var cc = document.getElementById('cc'); if(cc){ cc.style.display = 'none'; } }
 });
@@ -410,11 +496,17 @@ function pollGamepad(){
     var gp = null;
     for(var i = 0; i < pads.length; i++){ if(pads[i] && pads[i].connected){ gp = pads[i]; break; } }
     if(gp){
+      if(isBootVisible()){
+        var anyBtn = false;
+        for(var bi = 0; bi < gp.buttons.length; bi++){ if(gp.buttons[bi] && gp.buttons[bi].pressed){ anyBtn = true; break; } }
+        if(anyBtn){ skipBoot(); return; }
+      }
       var now = performance.now();
       var left = (gp.buttons[14] && gp.buttons[14].pressed) || (gp.axes[0] || 0) < -0.5;
       var right = (gp.buttons[15] && gp.buttons[15].pressed) || (gp.axes[0] || 0) > 0.5;
       if((left || right) && now - padLastNav > 250){
         padLastNav = now;
+        playSfx('nav');
         if(left){ selectGame(Math.max(0, sel - 1)); }
         if(right){ selectGame(Math.min(GAMES.length - 1, sel + 1)); }
       }
@@ -479,7 +571,7 @@ var themeDebounce = null;
 var themeAutoTried = {};
 var THEME_EXCLUDED = ['cover','remix','piano','1 hour','1hr','live','extended','loop','8d','slowed','reverb'];
 function themeOk(c){
-  if(!c || c.duration_secs == null || c.duration_secs < 60 || c.duration_secs > 360){ return false; }
+  if(!c || c.duration_secs == null || c.duration_secs < 45 || c.duration_secs > 480){ return false; }
   var t = String(c.title || '').toLowerCase();
   for(var i = 0; i < THEME_EXCLUDED.length; i++){ if(t.indexOf(THEME_EXCLUDED[i]) !== -1){ return false; } }
   return true;
@@ -502,6 +594,7 @@ function themeAudioEl(){
   return themeAudio;
 }
 function playThemeSrc(src){
+  stopPs5Ambient(1.0);
   var a = themeAudioEl();
   a.pause();
   a.dataset.fallbackTried = '';
@@ -525,6 +618,119 @@ function playCachedMusic(g){
     });
   }).catch(function(){ return false; });
 }
+
+/* ---- Real PS5 UI sound effects (Web Audio, preloaded, no synth) ----
+   Files live in dist/sfx/ (bundled) and can be overridden by dropping
+   files into %APPDATA%\com.sonic.launcher\sfx\ (auto-created).
+   Missing files stay silent — no errors, no synth fallback. */
+var SFX_STEMS = ['boot','nav','select','launch','back','cc_open','ambient'];
+var SFX_EXTS = ['mp3','wav','ogg','m4a'];
+var sfxCtx = null, sfxGain = null, sfxBuffers = {};
+var sfxEnabled = true, sfxVolume = 0.8;
+var ambientSrc = null, ambientGain = null, ambientPlaying = false;
+function sfxAudioContext(){
+  if(!sfxCtx){
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC){ return null; }
+    sfxCtx = new AC();
+    sfxGain = sfxCtx.createGain();
+    sfxGain.gain.value = sfxVolume;
+    sfxGain.connect(sfxCtx.destination);
+  }
+  if(sfxCtx.state === 'suspended'){ sfxCtx.resume().catch(function(){}); }
+  return sfxCtx;
+}
+function sfxSetVolume(v){
+  sfxVolume = Math.max(0, Math.min(1, v));
+  if(sfxGain){ sfxGain.gain.value = sfxVolume; }
+}
+function sfxPreload(){
+  var ctx = sfxAudioContext();
+  if(!ctx){ return; }
+  getSetting('sfx_enabled', '1').then(function(en){ sfxEnabled = (en !== '0'); });
+  getSetting('sfx_volume', '80').then(function(v){ sfxSetVolume((parseInt(v, 10) || 80) / 100); });
+  var core = tauriCore();
+  var dirP = core ? core.invoke('get_sfx_dir').catch(function(){ return null; }) : Promise.resolve(null);
+  dirP.then(function(dir){
+    var jobs = SFX_STEMS.map(function(stem){
+      var urls = [];
+      if(dir){ SFX_EXTS.forEach(function(ext){ urls.push(core.convertFileSrc(dir + '/' + stem + '.' + ext)); }); }
+      SFX_EXTS.forEach(function(ext){ urls.push('sfx/' + stem + '.' + ext); });
+      return sfxTryUrls(urls, 0).then(function(buf){ if(buf){ sfxBuffers[stem] = buf; } });
+    });
+    return Promise.all(jobs);
+  }).catch(function(){});
+}
+function sfxTryUrls(urls, i){
+  var ctx = sfxCtx;
+  if(!ctx || i >= urls.length){ return Promise.resolve(null); }
+  return fetch(urls[i]).then(function(r){
+    if(!r.ok){ return sfxTryUrls(urls, i + 1); }
+    return r.arrayBuffer();
+  }).then(function(buf){
+    if(!buf){ return sfxTryUrls(urls, i + 1); }
+    return ctx.decodeAudioData(buf).catch(function(){ return sfxTryUrls(urls, i + 1); });
+  }).catch(function(){ return sfxTryUrls(urls, i + 1); });
+}
+function playSfx(name){
+  if(!sfxEnabled){ return; }
+  var ctx = sfxAudioContext();
+  var buf = sfxBuffers[name];
+  if(!ctx || !buf){ return; }
+  try {
+    var src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(sfxGain);
+    src.start();
+  } catch(e){}
+}
+function playBootSfx(){
+  if(sfxBuffers['boot']){ playSfx('boot'); return; }
+  setTimeout(function(){ if(sfxBuffers['boot']){ playSfx('boot'); } }, 350);
+}
+function fadeAudioParam(param, target, secs){
+  if(!sfxCtx){ return; }
+  try {
+    var now = sfxCtx.currentTime;
+    param.cancelScheduledValues(now);
+    param.setValueAtTime(param.value, now);
+    param.linearRampToValueAtTime(Math.max(0, target), now + secs);
+  } catch(e){}
+}
+function startPs5Ambient(){
+  if(!sfxEnabled){ return; }
+  var ctx = sfxAudioContext();
+  var buf = sfxBuffers['ambient'];
+  if(!ctx || !buf || ambientPlaying){ return; }
+  try {
+    ambientGain = ctx.createGain();
+    ambientGain.gain.value = 0;
+    ambientGain.connect(sfxGain);
+    ambientSrc = ctx.createBufferSource();
+    ambientSrc.buffer = buf;
+    ambientSrc.loop = true;
+    ambientSrc.connect(ambientGain);
+    ambientSrc.start();
+    ambientPlaying = true;
+    fadeAudioParam(ambientGain.gain, sfxVolume * 0.45, 1.5);
+  } catch(e){}
+}
+function stopPs5Ambient(fadeSecs){
+  if(!ambientSrc || !ambientPlaying){ return; }
+  var src = ambientSrc, g = ambientGain;
+  ambientSrc = null; ambientGain = null; ambientPlaying = false;
+  var secs = (fadeSecs == null) ? 0.8 : fadeSecs;
+  if(g){ fadeAudioParam(g.gain, 0, secs); }
+  setTimeout(function(){ try { src.stop(); } catch(e){} }, secs * 1000 + 120);
+}
+function resumeHomeAudio(){
+  var g = GAMES[sel];
+  if(!g || !g.source || g.source === 'demo'){ return; }
+  playCachedMusic(g).then(function(played){
+    if(!played){ playAmbientIfSet(g); }
+  });
+}
+
 function scheduleThemeMusic(){
   if(themeDebounce){ clearTimeout(themeDebounce); }
   themeDebounce = setTimeout(function(){
@@ -540,19 +746,66 @@ function scheduleThemeMusic(){
         if(themeAutoTried[g.key]){ return; }
         themeAutoTried[g.key] = true;
         var core = tauriCore();
+        /* Music chain: YouTube theme -> YouTube soundtrack OST ->
+           KHInsider -> SoundCloud -> ambient file (if set) -> silent. */
         core.invoke('ensure_ytdlp').catch(function(){ return null; }).then(function(){
-          return core.invoke('search_theme_music', { gameName: g.row });
-        }).then(function(list){
-          var pick = null;
-          for(var i = 0; i < (list || []).length; i++){ if(themeOk(list[i])){ pick = list[i]; break; } }
-          if(!pick){ return; }
-          return core.invoke('download_theme_music', { gameKey: g.key, videoId: pick.id }).then(function(path){
-            if(path && GAMES[sel] === g){ playCachedMusic(g); }
-          });
+          return tryThemeSearch(core, g, false, 'youtube', themeOk);
+        }).then(function(found){
+          if(found){ return true; }
+          return tryThemeSearch(core, g, true, 'youtube', themeOk);
+        }).then(function(found){
+          if(found){ return true; }
+          return tryKhinsider(core, g);
+        }).then(function(found){
+          if(found){ return true; }
+          return tryThemeSearch(core, g, false, 'soundcloud', themeOk);
+        }).then(function(found){
+          if(!found){ playAmbientIfSet(g); }
         }).catch(function(){});
       });
     });
   }, 500);
+}
+
+/* One theme-search attempt: search, pick the first result passing
+   `filter`, download it and play it. Resolves true when music started. */
+function tryThemeSearch(core, g, fallback, source, filter){
+  return core.invoke('search_theme_music', { gameName: g.row, fallback: fallback, source: source }).then(function(list){
+    var pick = null;
+    for(var i = 0; i < (list || []).length; i++){ if(filter(list[i])){ pick = list[i]; break; } }
+    if(!pick){ return false; }
+    var dl = (pick.source === 'soundcloud' && pick.url)
+      ? core.invoke('download_theme_music_url', { gameKey: g.key, url: pick.url, source: 'soundcloud' })
+      : core.invoke('download_theme_music', { gameKey: g.key, videoId: pick.id });
+    return dl.then(function(path){
+      if(path && GAMES[sel] === g){ playCachedMusic(g); return true; }
+      return false;
+    });
+  }).catch(function(){ return false; });
+}
+
+/* KHInsider attempt: search + download the theme track. Resolves true
+   when music was started; false when KHInsider has nothing (or is
+   blocked) so the chain falls through to SoundCloud. */
+function tryKhinsider(core, g){
+  return core.invoke('download_khinsider_theme', { gameKey: g.key, gameName: g.row }).then(function(path){
+    if(path && GAMES[sel] === g){ playCachedMusic(g); return true; }
+    return false;
+  }).catch(function(){ return false; });
+}
+
+/* Last resort: play the user's ambient file (if one is set in Settings)
+   for a game with no theme music anywhere. Silent when none is set. */
+function playAmbientIfSet(g){
+  getSetting('ambient_music_path', '').then(function(path){
+    if(path){
+      var core = tauriCore(); if(!core){ return; }
+      var url = (core.convertFileSrc) ? core.convertFileSrc(path) : null;
+      if(url && GAMES[sel] === g){ playThemeSrc(url); }
+    } else if(GAMES[sel] === g){
+      startPs5Ambient();
+    }
+  }).catch(function(){ if(GAMES[sel] === g){ startPs5Ambient(); } });
 }
 
 /* Phase 3: the "..." game menu (Change Theme Music / pick file). */
@@ -563,9 +816,10 @@ document.body.appendChild(gameMenu);
 function toggleGameMenu(){
   var m = document.getElementById('gameMenu');
   if(!m){ return; }
-  if(m.style.display === 'block'){ m.style.display = 'none'; return; }
+  if(m.style.display === 'block'){ m.style.display = 'none'; playSfx('back'); return; }
   buildGameMenu();
   m.style.display = 'block';
+  playSfx('select');
 }
 function hideGameMenu(){ var m = document.getElementById('gameMenu'); if(m){ m.style.display = 'none'; } }
 function buildGameMenu(){
@@ -577,9 +831,13 @@ function buildGameMenu(){
   } else {
     html += '<div onclick="changeThemeMusic()" style="padding:9px 10px;border-radius:8px;cursor:pointer;background:rgba(255,255,255,.07)">Change Theme Music&hellip;</div>';
     html += '<div onclick="pickThemeFile()" style="padding:9px 10px;border-radius:8px;cursor:pointer;margin-top:6px;background:rgba(255,255,255,.07)">Choose music file&hellip;</div>';
+    html += '<div onclick="pasteThemeUrl()" style="padding:9px 10px;border-radius:8px;cursor:pointer;margin-top:6px;background:rgba(255,255,255,.07)">Paste music URL&hellip;</div>';
     html += '<div onclick="hideGameMenu();openSettings()" style="padding:9px 10px;border-radius:8px;cursor:pointer;margin-top:6px;background:rgba(255,255,255,.07)">Settings</div>';
     if(g.source === 'manual'){
       html += '<div onclick="removeSelectedManual()" style="padding:9px 10px;border-radius:8px;cursor:pointer;margin-top:6px;background:rgba(240,45,205,.18)">Remove from launcher</div>';
+    }
+    if(g.source === 'scan'){
+      html += '<div onclick="removeSelectedScanned()" style="padding:9px 10px;border-radius:8px;cursor:pointer;margin-top:6px;background:rgba(240,45,205,.18)">Remove from Library</div>';
     }
   }
   html += '<div id="themeResults" style="margin-top:8px"></div>';
@@ -611,7 +869,10 @@ function pickThemeResult(i){
   var box = document.getElementById('themeResults');
   if(box){ box.innerHTML = '<div style="font-size:13px;color:rgba(255,255,255,.6)">Downloading&hellip;</div>'; }
   var core = tauriCore();
-  core.invoke('download_theme_music', { gameKey: g.key, videoId: c.id }).then(function(){
+  var dl = (c.source === 'soundcloud' && c.url)
+    ? core.invoke('download_theme_music_url', { gameKey: g.key, url: c.url, source: 'soundcloud' })
+    : core.invoke('download_theme_music', { gameKey: g.key, videoId: c.id });
+  dl.then(function(){
     showToast('Theme music set: ' + c.title);
     hideGameMenu();
     if(GAMES[sel] === g){ playCachedMusic(g); }
@@ -629,6 +890,25 @@ function removeSelectedManual(){
   removeManualGame(g.manualId);
   hideGameMenu();
 }
+function removeSelectedScanned(){
+  var g = GAMES[sel]; if(!g || !g.scanId){ return; }
+  var core = tauriCore(); if(!core){ return; }
+  core.invoke('remove_scanned_game', { id: g.scanId }).then(function(){ refreshGames(); })
+    .catch(function(err){ showToast('Could not remove game: ' + err); });
+  hideGameMenu();
+}
+function pasteThemeUrl(){
+  var g = GAMES[sel]; if(!g){ return; }
+  var url = window.prompt('Paste a music URL (YouTube, SoundCloud, Bandcamp...)');
+  if(!url){ return; }
+  url = String(url).trim();
+  if(!url){ return; }
+  var core = tauriCore(); if(!core){ return; }
+  showToast('Downloading theme music...');
+  core.invoke('download_theme_music_url', { gameKey: g.key, url: url }).then(function(path){
+    if(path){ showToast('Theme music set'); hideGameMenu(); if(GAMES[sel] === g){ playCachedMusic(g); } }
+  }).catch(function(err){ showToast('Could not download: ' + err); });
+}
 
 /* Phase 5: settings panel wiring. */
 function populateLauncherSettings(){
@@ -641,6 +921,17 @@ function populateLauncherSettings(){
   getSetting('music_enabled', '1').then(function(v){ var el = document.getElementById('musicEnabled'); if(el){ el.checked = (v !== '0'); } });
   getSetting('music_volume', '30').then(function(v){ var el = document.getElementById('musicVolume'); if(el){ el.value = parseInt(v, 10) || 30; } });
   getSetting('minimize_on_launch', '1').then(function(v){ var el = document.getElementById('minOnLaunch'); if(el){ el.checked = (v !== '0'); } });
+  getSetting('skip_boot', '0').then(function(v){ var el = document.getElementById('skipBoot'); if(el){ el.checked = (v === '1'); } });
+  getSetting('sfx_enabled', '1').then(function(v){ var el = document.getElementById('sfxEnabled'); if(el){ el.checked = (v !== '0'); } });
+  getSetting('sfx_volume', '80').then(function(v){ var el = document.getElementById('sfxVolume'); if(el){ el.value = parseInt(v, 10) || 80; } });
+  core.invoke('get_app_version').then(function(v){
+    var el = document.getElementById('appVersion');
+    if(el){ el.textContent = 'Sonic Launcher v' + v; }
+  }).catch(function(){});
+  getSetting('ambient_music_path', '').then(function(v){
+    var el = document.getElementById('ambientStatus');
+    if(el){ el.textContent = v ? ('Ambient file: ' + v) : 'Not set \u2014 silent for games without a theme.'; }
+  });
   refreshScanFolderList();
 }
 function saveSgdbKey(){
@@ -652,6 +943,23 @@ function saveSgdbKey(){
     populateLauncherSettings();
     showToast(key ? 'SteamGridDB key saved' : 'SteamGridDB key cleared');
   }).catch(function(err){ showToast('Could not save key: ' + err); });
+}
+function pickAmbientFile(){
+  var core = tauriCore(); if(!core){ return; }
+  core.invoke('pick_ambient_file').then(function(path){
+    if(!path){ return; }
+    return core.invoke('set_setting', { key: 'ambient_music_path', value: path }).then(function(){
+      populateLauncherSettings();
+      showToast('Ambient music set');
+    });
+  }).catch(function(err){ showToast('Could not pick file: ' + err); });
+}
+function clearAmbientFile(){
+  var core = tauriCore(); if(!core){ return; }
+  core.invoke('set_setting', { key: 'ambient_music_path', value: '' }).then(function(){
+    populateLauncherSettings();
+    showToast('Ambient music cleared');
+  }).catch(function(err){ showToast('Could not clear: ' + err); });
 }
 function saveMusicToggle(el){
   var core = tauriCore();
@@ -666,6 +974,24 @@ function saveMusicVolume(el){
 function saveMinOnLaunch(el){
   var core = tauriCore();
   if(core){ core.invoke('set_setting', { key: 'minimize_on_launch', value: el.checked ? '1' : '0' }).catch(function(){}); }
+}
+function saveSkipBoot(el){
+  var core = tauriCore();
+  if(core){ core.invoke('set_setting', { key: 'skip_boot', value: el.checked ? '1' : '0' }).catch(function(){}); }
+}
+function saveSfxToggle(el){
+  sfxEnabled = el.checked;
+  var core = tauriCore();
+  if(core){ core.invoke('set_setting', { key: 'sfx_enabled', value: el.checked ? '1' : '0' }).catch(function(){}); }
+}
+function saveSfxVolume(el){
+  sfxSetVolume((parseInt(el.value, 10) || 80) / 100);
+  var core = tauriCore();
+  if(core){ core.invoke('set_setting', { key: 'sfx_volume', value: String(el.value) }).catch(function(){}); }
+}
+function openSfxFolder(){
+  var core = tauriCore();
+  if(core){ core.invoke('open_sfx_folder').catch(function(){}); }
 }
 function refreshScanFolderList(){
   var core = tauriCore(); if(!core){ return; }
@@ -747,12 +1073,13 @@ function startExePoll(g, sessionId, win){
         /* Game exited: bring the launcher back. */
         document.body.classList.remove('game-running');
         if(win && win.show){ win.show().catch(function(){}); }
+        resumeHomeAudio();
       }
     }).catch(function(){ clearInterval(exePoll); exePoll = null; });
   }, 2000);
 }
 
-refreshGames();
+sfxPreload(); refreshGames();
 
 bootSeq();
 setTimeout(function(){ var t=document.getElementById('toast'); t.style.opacity='1'; setTimeout(function(){ t.style.opacity='0'; },4500); },6000);

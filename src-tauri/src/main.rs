@@ -16,6 +16,7 @@ mod launch;
 mod steam;
 
 use tauri::AppHandle;
+use tauri::Manager;
 
 #[tauri::command]
 fn detect_steam_games() -> Vec<steam::SteamGame> {

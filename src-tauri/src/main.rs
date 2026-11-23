@@ -29,7 +29,6 @@ mod steam;
 mod stores;
 
 use tauri::AppHandle;
-use tauri::Manager;
 
 // --- Phase 1 ---------------------------------------------------------------
 
@@ -233,12 +232,6 @@ fn is_process_running(exe_name: String) -> bool {
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .setup(|app| {
-            if let Some(window) = app.get_webview_window("main") {
-                window.open_devtools();
-            }
-            Ok(())
-        })
         .invoke_handler(tauri::generate_handler![
             detect_steam_games,
             get_running_appid,

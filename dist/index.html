@@ -347,25 +347,24 @@ function launchSelected(){
   var args = (g.source === 'steam') ? { appid: g.appid } : { exePath: g.exePath };
   stopThemeMusic();
   core.invoke('launch_game', args).then(function(){
+    var w = null;
+    try { w = (window.__TAURI__.window && window.__TAURI__.window.getCurrentWindow) ? window.__TAURI__.window.getCurrentWindow() : null; } catch(e){}
+    /* Freeze + hide the launcher while ANY game runs (Steam and exe alike),
+       and bring it back when the game exits. Controlled by the
+       minimize_on_launch setting (default ON). */
+    getSetting('minimize_on_launch', '1').then(function(v){
+      if(v !== '0'){
+        document.body.classList.add('game-running');
+        if(w && w.hide){ w.hide().catch(function(){}); }
+      }
+    });
     /* Phase 5: start a playtime session; Steam ends it via the
        RunningAppID poll, exe games via the process poll. */
     core.invoke('start_playtime_session', { gameKey: g.key, gameName: g.row }).then(function(id){
-      if(g.source === 'steam'){ currentSessionId = id; }
-      else { startExePoll(g, id); }
+      if(g.source === 'steam'){ currentSessionId = id; startRunningPoll(w); }
+      else { startExePoll(g, id, w); }
     }).catch(function(){});
-    if(g.source === 'steam'){
-      var w = null;
-      try { w = (window.__TAURI__.window && window.__TAURI__.window.getCurrentWindow) ? window.__TAURI__.window.getCurrentWindow() : null; } catch(e){}
-      getSetting('minimize_on_launch', '1').then(function(v){
-        if(v !== '0'){
-          document.body.classList.add('game-running');
-          if(w && w.hide){ w.hide().catch(function(){}); }
-        }
-      });
-      startRunningPoll(w);
-    } else {
-      showToast('Launched ' + g.row);
-    }
+    if(g.source !== 'steam'){ showToast('Launched ' + g.row); }
   }).catch(function(err){ showToast('Could not launch: ' + err); });
 }
 /* "+" tile: pick a .exe, add it as a manual game, refresh the row. */
@@ -731,7 +730,7 @@ function loadRealPlaytime(){
     }
   }).catch(function(){});
 }
-function startExePoll(g, sessionId){
+function startExePoll(g, sessionId, win){
   if(exePoll){ clearInterval(exePoll); exePoll = null; }
   if(!g.exePath){ return; }
   var exeName = String(g.exePath).split(/[\\/]/).pop() || '';
@@ -745,6 +744,9 @@ function startExePoll(g, sessionId){
       else if(seen || checks >= 5){
         clearInterval(exePoll); exePoll = null;
         if(sessionId){ core.invoke('end_playtime_session', { sessionId: sessionId }).catch(function(){}); }
+        /* Game exited: bring the launcher back. */
+        document.body.classList.remove('game-running');
+        if(win && win.show){ win.show().catch(function(){}); }
       }
     }).catch(function(){ clearInterval(exePoll); exePoll = null; });
   }, 2000);

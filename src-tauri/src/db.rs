@@ -74,7 +74,47 @@ fn open(app: &AppHandle) -> Result<Connection, String> {
         );",
     )
     .map_err(|e| format!("cannot create table: {e}"))?;
+    // Migrations for `scanned_games` (exe-guarantee round, v0.2.3):
+    // the table predates the folder/override/confidence columns, and
+    // CREATE TABLE IF NOT EXISTS never adds them. `ensure_column` adds
+    // each one only when it is missing, so old databases upgrade in
+    // place with their games intact.
+    ensure_column(&conn, "scanned_games", "folder", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(&conn, "scanned_games", "exe_override", "TEXT")?;
+    ensure_column(
+        &conn,
+        "scanned_games",
+        "confidence",
+        "TEXT NOT NULL DEFAULT 'low'",
+    )?;
+    ensure_column(
+        &conn,
+        "scanned_games",
+        "pick_source",
+        "TEXT NOT NULL DEFAULT 'largest'",
+    )?;
     Ok(conn)
+}
+
+/// Add `column` to `table` when it is missing (see `open`).
+fn ensure_column(conn: &Connection, table: &str, column: &str, ddl: &str) -> Result<(), String> {
+    let mut stmt = conn
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .map_err(|e| format!("cannot inspect table {table}: {e}"))?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| format!("cannot inspect table {table}: {e}"))?;
+    for name in rows.flatten() {
+        if name == column {
+            return Ok(());
+        }
+    }
+    conn.execute(
+        &format!("ALTER TABLE {table} ADD COLUMN {column} {ddl}"),
+        [],
+    )
+    .map_err(|e| format!("cannot add column {column} to {table}: {e}"))?;
+    Ok(())
 }
 
 /// Add a manually picked .exe. Returns the new row id.
@@ -339,14 +379,39 @@ pub struct ScannedGame {
     pub exe_path: String,
     pub source: String,
     pub added_at: i64,
+    /// The game folder the exe was picked from.
+    pub folder: String,
+    /// The exe the user chose instead of the auto-pick, if any. This
+    /// always wins: rescans never touch a row that has one.
+    pub exe_override: Option<String>,
+    /// "high" / "medium" / "low" — how much the auto-pick is trusted.
+    pub confidence: String,
+    /// Which signal picked the exe (shortcut, known game, registry, ...).
+    pub pick_source: String,
 }
 
-/// Add a scanned game. Returns `None` when the exe path is already stored
-/// (deduped by `exe_path UNIQUE`).
+impl ScannedGame {
+    /// The exe that actually launches: the user's override when set,
+    /// otherwise the auto-picked exe.
+    pub fn effective_exe(&self) -> String {
+        self.exe_override
+            .clone()
+            .unwrap_or_else(|| self.exe_path.clone())
+    }
+}
+
+/// Add a scanned game, keyed by FOLDER (not by exe path): a rescan that
+/// picks a different exe for the same folder updates the row in place
+/// instead of adding a duplicate. A row with a user override is never
+/// touched — the override always wins. Returns the row id, or `None`
+/// when nothing was added/changed.
 pub fn add_scanned_game(
     app: &AppHandle,
     name: &str,
     exe_path: &str,
+    folder: &str,
+    confidence: &str,
+    pick_source: &str,
 ) -> Result<Option<i64>, String> {
     // Never re-add a path the user explicitly removed.
     let ignored = list_ignored_paths(app).unwrap_or_default();
@@ -354,11 +419,57 @@ pub fn add_scanned_game(
         return Ok(None);
     }
     let conn = open(app)?;
+    // Legacy rows (pre-v0.2.3) have no folder: match them by exe path
+    // and adopt them into the new scheme.
+    let legacy: Option<i64> = conn
+        .query_row(
+            "SELECT id FROM scanned_games WHERE exe_path = ?1 AND folder = ''",
+            params![exe_path],
+            |row| row.get(0),
+        )
+        .ok();
+    if let Some(id) = legacy {
+        conn.execute(
+            "UPDATE scanned_games SET name = ?1, folder = ?2, confidence = ?3, pick_source = ?4 WHERE id = ?5",
+            params![name, folder, confidence, pick_source, id],
+        )
+        .map_err(|e| format!("cannot update scanned game: {e}"))?;
+        return Ok(Some(id));
+    }
+    // A row for this folder already exists?
+    let existing: Option<(i64, Option<String>)> = conn
+        .query_row(
+            "SELECT id, exe_override FROM scanned_games WHERE folder = ?1",
+            params![folder],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .ok();
+    if let Some((id, override_path)) = existing {
+        // The user overrode this game's exe: the rescan must not
+        // clobber it (and must not add a second row for the folder).
+        if override_path.is_some() {
+            return Ok(None);
+        }
+        // No override: update the auto-pick in place (keeps the row id,
+        // so music/playtime keyed by `scan-<id>` survive a rescan).
+        // If another row already owns the new exe path, drop that row
+        // first — one exe belongs to one folder.
+        let _ = conn.execute(
+            "DELETE FROM scanned_games WHERE exe_path = ?1 AND id != ?2",
+            params![exe_path, id],
+        );
+        conn.execute(
+            "UPDATE scanned_games SET name = ?1, exe_path = ?2, confidence = ?3, pick_source = ?4 WHERE id = ?5",
+            params![name, exe_path, confidence, pick_source, id],
+        )
+        .map_err(|e| format!("cannot update scanned game: {e}"))?;
+        return Ok(Some(id));
+    }
     let changed = conn
         .execute(
-            "INSERT OR IGNORE INTO scanned_games (name, exe_path, source, added_at)
-             VALUES (?1, ?2, 'scan', ?3)",
-            params![name, exe_path, now_unix()],
+            "INSERT OR IGNORE INTO scanned_games (name, exe_path, source, added_at, folder, confidence, pick_source)
+             VALUES (?1, ?2, 'scan', ?3, ?4, ?5, ?6)",
+            params![name, exe_path, now_unix(), folder, confidence, pick_source],
         )
         .map_err(|e| format!("cannot add scanned game: {e}"))?;
     if changed == 0 {
@@ -372,7 +483,7 @@ pub fn add_scanned_game(
 pub fn list_scanned_games(app: &AppHandle) -> Result<Vec<ScannedGame>, String> {
     let conn = open(app)?;
     let mut stmt = conn
-        .prepare("SELECT id, name, exe_path, source, added_at FROM scanned_games ORDER BY id DESC")
+        .prepare("SELECT id, name, exe_path, source, added_at, folder, exe_override, confidence, pick_source FROM scanned_games ORDER BY id DESC")
         .map_err(|e| format!("cannot list scanned games: {e}"))?;
     let rows = stmt
         .query_map([], |row| {
@@ -382,6 +493,10 @@ pub fn list_scanned_games(app: &AppHandle) -> Result<Vec<ScannedGame>, String> {
                 exe_path: row.get(2)?,
                 source: row.get(3)?,
                 added_at: row.get(4)?,
+                folder: row.get(5)?,
+                exe_override: row.get(6)?,
+                confidence: row.get(7)?,
+                pick_source: row.get(8)?,
             })
         })
         .map_err(|e| format!("cannot list scanned games: {e}"))?;
@@ -392,14 +507,116 @@ pub fn list_scanned_games(app: &AppHandle) -> Result<Vec<ScannedGame>, String> {
     Ok(out)
 }
 
+/// One scanned game by id, or `None`.
+pub fn get_scanned_game(app: &AppHandle, id: i64) -> Result<Option<ScannedGame>, String> {
+    let conn = open(app)?;
+    let row = conn
+        .query_row(
+            "SELECT id, name, exe_path, source, added_at, folder, exe_override, confidence, pick_source FROM scanned_games WHERE id = ?1",
+            params![id],
+            |row| {
+                Ok(ScannedGame {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    exe_path: row.get(2)?,
+                    source: row.get(3)?,
+                    added_at: row.get(4)?,
+                    folder: row.get(5)?,
+                    exe_override: row.get(6)?,
+                    confidence: row.get(7)?,
+                    pick_source: row.get(8)?,
+                })
+            },
+        )
+        .ok();
+    Ok(row)
+}
+
+/// Set the user's exe override for a scanned game. The exe must exist,
+/// end in `.exe`, and live inside the game's folder. The override is
+/// never clobbered by rescans (see `add_scanned_game`).
+pub fn set_scanned_exe_override(app: &AppHandle, id: i64, exe_path: &str) -> Result<(), String> {
+    let game = get_scanned_game(app, id)?.ok_or_else(|| format!("no scanned game with id {id}"))?;
+    let exe_path = exe_path.trim();
+    if !exe_path.to_lowercase().ends_with(".exe") {
+        return Err("not an .exe file".to_string());
+    }
+    if !std::path::Path::new(exe_path).is_file() {
+        return Err("exe file does not exist".to_string());
+    }
+    if !game.folder.is_empty() {
+        let folder_norm = game.folder.replace('\\', "/").to_lowercase();
+        let exe_norm = exe_path.replace('\\', "/").to_lowercase();
+        let folder_norm = folder_norm.trim_end_matches('/');
+        if !exe_norm.starts_with(&format!("{folder_norm}/")) {
+            return Err("exe is not inside the game folder".to_string());
+        }
+    }
+    let conn = open(app)?;
+    let changed = conn
+        .execute(
+            "UPDATE scanned_games SET exe_override = ?1 WHERE id = ?2",
+            params![exe_path, id],
+        )
+        .map_err(|e| format!("cannot set exe override: {e}"))?;
+    if changed == 0 {
+        return Err(format!("no scanned game with id {id}"));
+    }
+    Ok(())
+}
+
+/// Clear the user's exe override (the auto-pick takes over again).
+pub fn clear_scanned_exe_override(app: &AppHandle, id: i64) -> Result<(), String> {
+    let conn = open(app)?;
+    let changed = conn
+        .execute(
+            "UPDATE scanned_games SET exe_override = NULL WHERE id = ?1",
+            params![id],
+        )
+        .map_err(|e| format!("cannot clear exe override: {e}"))?;
+    if changed == 0 {
+        return Err(format!("no scanned game with id {id}"));
+    }
+    Ok(())
+}
+
+/// Update the auto-picked exe for a scanned game (used when the
+/// override is cleared and the folder is re-ranked).
+pub fn update_scanned_pick(
+    app: &AppHandle,
+    id: i64,
+    exe_path: &str,
+    confidence: &str,
+    pick_source: &str,
+) -> Result<(), String> {
+    let conn = open(app)?;
+    // One exe belongs to one folder: drop any other row owning this path.
+    let _ = conn.execute(
+        "DELETE FROM scanned_games WHERE exe_path = ?1 AND id != ?2",
+        params![exe_path, id],
+    );
+    let changed = conn
+        .execute(
+            "UPDATE scanned_games SET exe_path = ?1, confidence = ?2, pick_source = ?3 WHERE id = ?4",
+            params![exe_path, confidence, pick_source, id],
+        )
+        .map_err(|e| format!("cannot update scanned pick: {e}"))?;
+    if changed == 0 {
+        return Err(format!("no scanned game with id {id}"));
+    }
+    Ok(())
+}
+
 /// Remove one scanned game by id AND remember its exe path in
 /// `ignored_paths`, so the next scan never re-adds a game the user
 /// explicitly removed.
 pub fn remove_scanned_game(app: &AppHandle, id: i64) -> Result<(), String> {
     let conn = open(app)?;
+    // Remember the EFFECTIVE exe (override when set) so the next scan
+    // never re-adds the game the user just removed.
     let exe_path: Option<String> = conn
         .query_row(
-            "SELECT exe_path FROM scanned_games WHERE id = ?1",
+            "SELECT COALESCE(exe_override, exe_path) FROM scanned_games WHERE id = ?1",
             params![id],
             |row| row.get(0),
         )

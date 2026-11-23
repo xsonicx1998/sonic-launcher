@@ -410,6 +410,8 @@ function mapUnifiedGame(u){
   var label = (u.source === 'steam') ? 'Steam' : (u.source === 'manual') ? 'Added manually' : u.source;
   var g = baseTileFields(u.name, label, (u.source || 'PC') + '  \u2022  PC');
   g.key = u.key; g.source = u.source; g.appid = u.appid || null; g.exePath = u.exe_path || null;
+  g.folder = u.folder || null; g.confidence = u.confidence || null;
+  g.pickSource = u.pick_source || null; g.hasOverride = !!u.has_override;
   if(u.source === 'manual' && u.key){
     var parts = String(u.key).split('-');
     g.manualId = parseInt(parts[parts.length - 1], 10) || null;
@@ -478,7 +480,7 @@ function launchSelected(){
   if(!g.source || g.source === 'demo'){ showToast('Demo game \u2014 add your own games with + to play'); return; }
   var core = tauriCore();
   if(!core){ showToast('Launcher backend not available'); return; }
-  var args = (g.source === 'steam') ? { appid: g.appid } : { exePath: g.exePath };
+  var args = (g.source === 'steam') ? { appid: g.appid, gameName: g.row, gameKey: g.key } : { exePath: g.exePath, gameName: g.row, gameKey: g.key };
   playSfx('launch');
   stopThemeMusic();
   stopPs5Ambient(0.6);
@@ -887,6 +889,14 @@ function buildGameMenu(){
     if(!g.source || g.source === 'demo'){
       html += '<div style="color:rgba(255,255,255,.6);font-size:13px">Demo game \u2014 add your own games with + to play.</div>';
     }
+    if(g.source === 'scan' && g.exePath){
+      var exeName = String(g.exePath).split(/[\\/]/).pop() || g.exePath;
+      html += '<div style="color:rgba(255,255,255,.6);font-size:12px;margin:4px 0 8px;word-break:break-all">Launch file: ' + escHtml(exeName) + (g.hasOverride ? ' (your choice)' : '') + '</div>';
+      if(g.confidence === 'low' && !g.hasOverride){
+        html += '<div style="color:#ffb84d;font-size:12px;margin-bottom:8px">Not sure this is the right file \u2014 check it below.</div>';
+      }
+      html += '<div onclick="openChangeExe()" style="padding:9px 10px;border-radius:8px;cursor:pointer;background:rgba(255,255,255,.07)">Change Executable&hellip;</div>';
+    }
     html += '<div onclick="changeThemeMusic()" style="padding:9px 10px;border-radius:8px;cursor:pointer;background:rgba(255,255,255,.07)">Change Theme Music&hellip;</div>';
     html += '<div onclick="pickThemeFile()" style="padding:9px 10px;border-radius:8px;cursor:pointer;margin-top:6px;background:rgba(255,255,255,.07)">Choose music file&hellip;</div>';
     html += '<div onclick="pasteThemeUrl()" style="padding:9px 10px;border-radius:8px;cursor:pointer;margin-top:6px;background:rgba(255,255,255,.07)">Paste music URL&hellip;</div>';
@@ -899,6 +909,7 @@ function buildGameMenu(){
     }
   }
   html += '<div id="themeResults" style="margin-top:8px"></div>';
+  html += '<div id="exeResults" style="margin-top:8px"></div>';
   m.innerHTML = html;
 }
 function changeThemeMusic(){
@@ -954,6 +965,87 @@ function removeSelectedScanned(){
   core.invoke('remove_scanned_game', { id: g.scanId }).then(function(){ refreshGames(); })
     .catch(function(err){ showToast('Could not remove game: ' + err); });
   hideGameMenu();
+}
+/* Exe guarantee: list the ranked launch files for a scanned game and
+   let the user pick one (or browse). The choice is stored as the
+   game's override and survives every rescan. */
+function openChangeExe(){
+  var g = GAMES[sel]; if(!g || !g.scanId){ return; }
+  var box = document.getElementById('exeResults');
+  if(box){ box.innerHTML = '<div style="font-size:13px;color:rgba(255,255,255,.6)">Finding launch files&hellip;</div>'; }
+  var core = tauriCore(); if(!core){ return; }
+  core.invoke('list_exe_candidates', { id: g.scanId }).then(function(list){
+    if(!box){ return; }
+    if(!list || !list.length){ box.innerHTML = '<div style="font-size:13px;color:rgba(255,255,255,.6)">No launch files found in this folder.</div>'; return; }
+    window.__exeCandidates = list;
+    var html = '';
+    list.forEach(function(c, i){
+      var name = String(c.exe_path).split(/[\\/]/).pop() || c.exe_path;
+      var current = (g.exePath && String(c.exe_path).toLowerCase() === String(g.exePath).toLowerCase()) ? ' \u2022 current' : '';
+      html += '<div onclick="pickExeCandidate(' + i + ')" style="padding:8px 10px;border-radius:8px;cursor:pointer;margin-top:4px;background:rgba(255,255,255,.07);font-size:13px">' + escHtml(name) + ' <span style="color:rgba(255,255,255,.55)">' + escHtml(c.source) + current + '</span></div>';
+    });
+    html += '<div onclick="browseExeOverride()" style="padding:8px 10px;border-radius:8px;cursor:pointer;margin-top:4px;background:rgba(255,255,255,.07);font-size:13px">Browse&hellip;</div>';
+    if(g.hasOverride){
+      html += '<div onclick="resetExeOverride()" style="padding:8px 10px;border-radius:8px;cursor:pointer;margin-top:4px;background:rgba(240,45,205,.18);font-size:13px">Reset to auto-detected</div>';
+    }
+    box.innerHTML = html;
+  }).catch(function(err){ if(box){ box.innerHTML = '<div style="font-size:13px;color:#ff8a8a">Could not list files: ' + escHtml(err) + '</div>'; } });
+}
+function pickExeCandidate(i){
+  var g = GAMES[sel]; if(!g || !g.scanId){ return; }
+  var list = window.__exeCandidates || [];
+  var c = list[i]; if(!c){ return; }
+  var core = tauriCore(); if(!core){ return; }
+  core.invoke('set_exe_override', { id: g.scanId, exePath: c.exe_path }).then(function(){
+    showToast('Launch file set');
+    hideGameMenu();
+    refreshGames();
+  }).catch(function(err){ showToast('Could not set launch file: ' + err); });
+}
+function browseExeOverride(){
+  var g = GAMES[sel]; if(!g || !g.scanId){ return; }
+  var dlg = (window.__TAURI__ && window.__TAURI__.dialog) ? window.__TAURI__.dialog : null;
+  if(!dlg || !dlg.open){ showToast('File picker not available'); return; }
+  var opts = { multiple: false, filters: [{ name: 'Executable', extensions: ['exe'] }] };
+  if(g.folder){ opts.defaultPath = g.folder; }
+  dlg.open(opts).then(function(path){
+    if(!path){ return; }
+    var core = tauriCore(); if(!core){ return; }
+    core.invoke('set_exe_override', { id: g.scanId, exePath: path }).then(function(){
+      showToast('Launch file set');
+      hideGameMenu();
+      refreshGames();
+    }).catch(function(err){ showToast('Could not set launch file: ' + err); });
+  }).catch(function(err){ showToast('Could not pick file: ' + err); });
+}
+function resetExeOverride(){
+  var g = GAMES[sel]; if(!g || !g.scanId){ return; }
+  var core = tauriCore(); if(!core){ return; }
+  core.invoke('set_exe_override', { id: g.scanId, exePath: null }).then(function(){
+    showToast('Launch file reset to auto-detected');
+    hideGameMenu();
+    refreshGames();
+  }).catch(function(err){ showToast('Could not reset: ' + err); });
+}
+/* Fail-soft: if an exe exits within ~3s with an error, the backend
+   emits `launch-fast-exit` — suggest trying another launch file.
+   Suggest-only: nothing is blocked or reverted. */
+function listenFastExit(){
+  var ev = (window.__TAURI__ && window.__TAURI__.event) ? window.__TAURI__.event : null;
+  if(!ev || !ev.listen){ return; }
+  ev.listen('launch-fast-exit', function(e){
+    var p = (e && e.payload) || {};
+    var name = p.game_name || 'The game';
+    if(!window.confirm(name + ' closed right away. This might not be the right file. Try another launch file?')){ return; }
+    var idx = -1;
+    for(var i = 0; i < GAMES.length; i++){ if(GAMES[i].key === p.game_key){ idx = i; break; } }
+    if(idx < 0){ return; }
+    sel = idx;
+    if(typeof selectGame === 'function'){ selectGame(idx); }
+    var m = document.getElementById('gameMenu');
+    if(m){ buildGameMenu(); m.style.display = 'block'; }
+    setTimeout(openChangeExe, 150);
+  }).catch(function(){});
 }
 function pasteThemeUrl(){
   var g = GAMES[sel]; if(!g){ return; }
@@ -1137,6 +1229,7 @@ function startExePoll(g, sessionId, win){
   }, 2000);
 }
 
+listenFastExit();
 sfxPreload(); refreshGames();
 
 bootSeq();

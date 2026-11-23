@@ -11,6 +11,9 @@
 //! - Phase 4: `detect_other_stores`, `scan_folders`, `list_all_games`,
 //!   `add_scan_folder` / `list_scan_folders` / `remove_scan_folder`
 //!   (stores.rs + db.rs settings)
+//! - Exe guarantee (v0.2.3): `list_exe_candidates`, `set_exe_override`
+//!   (stores.rs scoring + db.rs override columns), fail-soft launch
+//!   watch in `launch.rs`
 //! - Phase 5: `get_setting` / `set_setting`, `get_playtime`,
 //!   `list_playtime`, `start_playtime_session` / `end_playtime_session`,
 //!   `is_process_running` (playtime.rs)
@@ -44,8 +47,14 @@ fn get_running_appid() -> Option<u32> {
 }
 
 #[tauri::command]
-fn launch_game(appid: Option<u32>, exe_path: Option<String>) -> Result<(), String> {
-    launch::launch_game(appid, exe_path)
+fn launch_game(
+    app: AppHandle,
+    appid: Option<u32>,
+    exe_path: Option<String>,
+    game_name: Option<String>,
+    game_key: Option<String>,
+) -> Result<(), String> {
+    launch::launch_game(&app, appid, exe_path, game_name, game_key)
 }
 
 #[tauri::command]
@@ -207,7 +216,14 @@ fn scan_folders(app: AppHandle, folders: Vec<String>) -> Vec<stores::ScannedFoun
         .collect();
     let found = stores::scan_folders(&folders, &ignored);
     for f in &found {
-        let _ = db::add_scanned_game(&app, &f.name, &f.exe_path);
+        let _ = db::add_scanned_game(
+            &app,
+            &f.name,
+            &f.exe_path,
+            &f.folder,
+            &f.confidence,
+            &f.pick_source,
+        );
     }
     found
 }
@@ -215,6 +231,50 @@ fn scan_folders(app: AppHandle, folders: Vec<String>) -> Vec<stores::ScannedFoun
 #[tauri::command]
 fn remove_scanned_game(app: AppHandle, id: i64) -> Result<(), String> {
     db::remove_scanned_game(&app, id)
+}
+
+/// The folder to rank candidates in for a scanned game. Legacy rows
+/// (pre-v0.2.3) have no folder: use the parent dir of the current exe.
+fn scanned_game_folder(game: &db::ScannedGame) -> String {
+    if !game.folder.is_empty() {
+        return game.folder.clone();
+    }
+    std::path::Path::new(&game.effective_exe())
+        .parent()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn list_exe_candidates(app: AppHandle, id: i64) -> Result<Vec<stores::RankedExe>, String> {
+    let game =
+        db::get_scanned_game(&app, id)?.ok_or_else(|| format!("no scanned game with id {id}"))?;
+    Ok(stores::list_exe_candidates(&scanned_game_folder(&game)))
+}
+
+#[tauri::command]
+fn set_exe_override(app: AppHandle, id: i64, exe_path: Option<String>) -> Result<(), String> {
+    match exe_path {
+        Some(path) => db::set_scanned_exe_override(&app, id, &path),
+        None => {
+            // Clear the override, then re-rank the folder so the
+            // auto-pick (not the stale exe) takes over again.
+            let game = db::get_scanned_game(&app, id)?
+                .ok_or_else(|| format!("no scanned game with id {id}"))?;
+            db::clear_scanned_exe_override(&app, id)?;
+            let candidates = stores::list_exe_candidates(&scanned_game_folder(&game));
+            if let Some(top) = candidates.first() {
+                let _ = db::update_scanned_pick(
+                    &app,
+                    id,
+                    &top.exe_path,
+                    stores::confidence_of(top.score),
+                    &top.source,
+                );
+            }
+            Ok(())
+        }
+    }
 }
 
 #[tauri::command]
@@ -335,6 +395,8 @@ fn main() {
             detect_other_stores,
             scan_folders,
             remove_scanned_game,
+            list_exe_candidates,
+            set_exe_override,
             list_all_games,
             add_scan_folder,
             list_scan_folders,

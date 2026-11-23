@@ -126,6 +126,9 @@ const NEEDED_FNS = [
   'playBootSfx', 'fadeAudioParam', 'startPs5Ambient', 'stopPs5Ambient',
   'resumeHomeAudio', 'enterHome', 'spawnParticles', 'bootSeq', 'skipBoot',
   'isBootVisible', 'tileFocusedHTML', 'escHtml', 'showToast',
+  'toggleGameMenu', 'buildGameMenu', 'hideGameMenu',
+  'openSearch', 'closeSearch', 'searchGameMatches', 'renderSearchResults',
+  'pickSearchResult', 'toggleThemePlayback',
 ];
 const VAR_DEFS = [];
 
@@ -156,6 +159,10 @@ async function main() {
   var ambientSrc, ambientGain, ambientPlaying = false;
   var bootToken = 0;
   var THEME_EXCLUDED = ['cover','remix','piano','1 hour','1hr','live','extended','loop','8d','slowed','reverb'];
+  // Stub: pickSearchResult delegates selection to the real selectGame;
+  // the harness only records which index was picked.
+  var selectGameCalls = [];
+  function selectGame(i){ selectGameCalls.push(i); }
   // Evaluate the extracted code in this context (globals above are in scope).
   eval(code);
 
@@ -257,6 +264,90 @@ async function main() {
     stopPs5Ambient(0.05);
     await sleep(200);
     assert(!ambientPlaying, 'ambient did not stop');
+  });
+
+  console.log('Game menu / search / music bar:');
+  await check('••• menu opens for a demo game with Change Theme Music + Paste music URL', async () => {
+    GAMES = [{ key: 'dreams', row: 'Dreams' }]; // no source field = demo
+    sel = 0;
+    const m = getEl('gameMenu');
+    m.style.display = 'none';
+    toggleGameMenu();
+    assert.strictEqual(m.style.display, 'block', 'menu did not open');
+    assert(m.innerHTML.includes('Change Theme Music'), 'missing Change Theme Music: ' + m.innerHTML);
+    assert(m.innerHTML.includes('Paste music URL'), 'missing Paste music URL');
+    assert(m.innerHTML.includes('Demo game'), 'missing demo notice');
+    toggleGameMenu();
+    assert.strictEqual(m.style.display, 'none', 'menu did not close on second toggle');
+  });
+  await check('••• menu for real games keeps Remove options', async () => {
+    GAMES = [{ key: 'm1', row: 'Doom', source: 'manual', manualId: 'x' }];
+    sel = 0;
+    buildGameMenu();
+    const m = getEl('gameMenu');
+    assert(m.innerHTML.includes('Change Theme Music'), 'missing Change Theme Music');
+    assert(m.innerHTML.includes('Remove from launcher'), 'missing Remove from launcher');
+    GAMES = [{ key: 's1', row: 'Hollow Knight', source: 'scan', scanId: 's-1' }];
+    buildGameMenu();
+    assert(m.innerHTML.includes('Remove from Library'), 'missing Remove from Library');
+    GAMES = [{ key: 's2', row: 'Hollow Knight', source: 'scan', scanId: 7, exePath: 'C:\\Games\\Hollow Knight\\Hollow Knight.exe', confidence: 'low', hasOverride: false }];
+    buildGameMenu();
+    assert(m.innerHTML.includes('Launch file:'), 'missing Launch file line');
+    assert(m.innerHTML.includes('Change Executable'), 'missing Change Executable');
+    assert(m.innerHTML.includes('Not sure this is the right file'), 'missing low-confidence warning');
+    GAMES = [{ key: 's3', row: 'Cyberpunk 2077', source: 'scan', scanId: 8, exePath: 'C:\\Games\\Cyberpunk 2077\\bin\\x64\\Cyberpunk2077.exe', confidence: 'high', hasOverride: false }];
+    buildGameMenu();
+    assert(!m.innerHTML.includes('Not sure this is the right file'), 'high-confidence game should not warn');
+  });
+  await check('Search opens, filters by title, picks a result', async () => {
+    GAMES = [{ key: 'dreams', row: 'Dreams' }, { key: 'astro', row: "Astro's Playroom", name: "ASTRO'S PLAYROOM" }, { key: 'blood', row: 'Bloodborne' }];
+    sel = 0;
+    const box = getEl('searchBox');
+    box.style.display = 'none';
+    openSearch();
+    assert.strictEqual(box.style.display, 'block', 'search box did not open');
+    assert.deepStrictEqual(searchGameMatches('dre'), [0], 'dre should match Dreams only');
+    assert.deepStrictEqual(searchGameMatches(''), [0, 1, 2], 'empty query should match all');
+    assert.deepStrictEqual(searchGameMatches('zzz'), [], 'zzz should match nothing');
+    renderSearchResults('astro');
+    const res = getEl('searchResults').innerHTML;
+    assert(res.includes('Astro'), 'results missing Astro: ' + res);
+    assert(!res.includes('Bloodborne'), 'results should exclude Bloodborne');
+    selectGameCalls.length = 0;
+    pickSearchResult(2);
+    assert.deepStrictEqual(selectGameCalls, [2], 'pick did not select game 2');
+    assert.strictEqual(box.style.display, 'none', 'search box did not close after pick');
+  });
+  await check('Music bar tap pauses and resumes the theme', async () => {
+    themeAudio = makeEl('audio');
+    themeAudio.volume = 0.3;
+    let pausedCalled = false, playedCalled = false;
+    themeAudio.paused = false;
+    themeAudio.src = 'asset://localhost/music.m4a';
+    themeAudio.pause = () => { pausedCalled = true; themeAudio.paused = true; };
+    themeAudio.play = () => { playedCalled = true; themeAudio.paused = false; return Promise.resolve(); };
+    toggleThemePlayback();
+    assert(pausedCalled, 'first tap did not pause');
+    toggleThemePlayback();
+    assert(playedCalled, 'second tap did not resume');
+  });
+  await check('Music bar tap with nothing loaded starts the cached theme', async () => {
+    themeAudio = makeEl('audio');
+    themeAudio.volume = 0.3;
+    themeAudio.paused = true;
+    themeAudio.src = '';
+    themeAudio.play = () => Promise.resolve();
+    themeAudio.pause = () => {};
+    invokeLog.length = 0;
+    mockCachedMusic = { path: 'C:\\music\\theme.m4a' };
+    GAMES = [{ key: 'g1', row: 'Hollow Knight', source: 'steam' }];
+    sel = 0;
+    toggleThemePlayback();
+    await sleep(150);
+    assert(invokeLog.some((c) => c.cmd === 'get_game_music'), 'expected get_game_music call, got ' + invokeLog.map((c) => c.cmd).join(','));
+  });
+  await check('escHtml escapes single quotes too', async () => {
+    assert.strictEqual(escHtml("a'b\"c<d&e"), 'a&#39;b&quot;c&lt;d&amp;e');
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

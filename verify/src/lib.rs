@@ -270,10 +270,7 @@ pub mod music_pure {
             let hash = parts.next()?;
             let name = parts.next()?;
             let name = name.trim_start_matches('*');
-            if name == filename
-                && hash.len() == 64
-                && hash.chars().all(|c| c.is_ascii_hexdigit())
-            {
+            if name == filename && hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()) {
                 return Some(hash.to_lowercase());
             }
         }
@@ -461,8 +458,7 @@ pub mod music_pure {
             assert_eq!(
                 parse_sha256sums(sums, "yt-dlp.exe"),
                 Some(
-                    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-                        .to_string()
+                    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string()
                 )
             );
             assert_eq!(parse_sha256sums(sums, "missing.exe"), None);
@@ -508,7 +504,7 @@ pub mod music_pure {
 
 pub mod stores_pure {
     use serde::Serialize;
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
     use std::path::{Path, PathBuf};
     #[derive(Debug, Clone, Serialize)]
     pub struct DetectedGame {
@@ -561,32 +557,53 @@ pub mod stores_pure {
         if stem_lower == "setup" {
             return true;
         }
-        if stem_lower.contains("uninstall")
-            || stem_lower.contains("unins")
-            || stem_lower.contains("vcredist")
-            || stem_lower.contains("dxsetup")
-            || stem_lower.contains("redist")
-        {
-            return true;
-        }
-        if stem_lower == "update" || stem_lower == "updater" || stem_lower.contains("updater") {
-            return true;
-        }
-        // Helper / non-game exes commonly found inside real game folders.
-        const HELPERS: &[&str] = &[
+        // HARD denylist (v0.2.3): uninstallers / deleters / cleaners,
+        // installers / prerequisites, crash / update helpers, servers.
+        // `launcher` is NEVER filtered.
+        const DENY: &[&str] = &[
+            "uninstall",
+            "unins",
+            "uninst",
+            "remove",
+            "remover",
+            "delete",
+            "cleanup",
+            "cleaner",
+            "wipe",
+            "purge",
+            "reset",
+            "repair",
+            "modify",
+            "install",
+            "installer",
+            "autorun",
+            "bootstrap",
+            "redist",
+            "vcredist",
+            "vc_redist",
+            "dxsetup",
+            "directx",
+            "oalinst",
+            "physx",
+            "dotnet",
+            "ue4prereq",
+            "ueprereq",
             "crashreporter",
             "crashhandler",
             "unitycrashhandler",
             "crashpad",
-            "ue4prereq",
-            "ueprereq",
-            "dotnet",
+            "bugsplat",
+            "update",
+            "updater",
             "benchmark",
             "config",
             "easyanticheat_setup",
             "battleye",
+            "beservice",
+            "dedicated",
+            "server",
         ];
-        if HELPERS.iter().any(|h| stem_lower.contains(h)) {
+        if DENY.iter().any(|d| stem_lower.contains(d)) {
             return true;
         }
         let _ = siblings; // kept for signature compatibility; no longer needed
@@ -627,6 +644,396 @@ pub mod stores_pure {
             }
         }
         out.trim().to_string()
+    }
+    // Exe picking: scoring (exe-guarantee round, v0.2.3). Mirror of the
+    // same functions in src-tauri/src/stores.rs — keep in sync. The
+    // Windows registry enumeration lives only in stores.rs (cfg
+    // windows); its pure helpers are mirrored below.
+    #[derive(Debug, Clone, Serialize)]
+    pub struct RankedExe {
+        pub exe_path: String,
+        pub score: i32,
+        pub source: String,
+    }
+    fn normalize_name(s: &str) -> String {
+        s.chars()
+            .filter(|c| c.is_alphanumeric())
+            .collect::<String>()
+            .to_lowercase()
+    }
+    fn roman_to_arabic(word_lower: &str) -> Option<&'static str> {
+        match word_lower {
+            "i" => Some("1"),
+            "ii" => Some("2"),
+            "iii" => Some("3"),
+            "iv" => Some("4"),
+            "v" => Some("5"),
+            "vi" => Some("6"),
+            "vii" => Some("7"),
+            "viii" => Some("8"),
+            "ix" => Some("9"),
+            "x" => Some("10"),
+            _ => None,
+        }
+    }
+    fn acronym_variants(folder_name: &str) -> (String, String) {
+        let words: Vec<&str> = folder_name
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| !w.is_empty() && *w != "s" && *w != "S")
+            .collect();
+        let mut raw = String::new();
+        let mut normalized = String::new();
+        for w in words {
+            let lower = w.to_lowercase();
+            if let Some(digit) = roman_to_arabic(&lower) {
+                raw.push(lower.chars().next().unwrap_or('?'));
+                normalized.push_str(digit);
+            } else if lower.chars().all(|c| c.is_ascii_digit()) {
+                raw.push_str(&lower);
+                normalized.push_str(&lower);
+            } else {
+                let initial = lower.chars().next().unwrap_or('?');
+                raw.push(initial);
+                normalized.push(initial);
+            }
+        }
+        (raw, normalized)
+    }
+    pub fn acronym_matches(stem_lower: &str, folder_name: &str) -> bool {
+        let stem = normalize_name(stem_lower);
+        if stem.is_empty() {
+            return false;
+        }
+        let (raw, normalized) = acronym_variants(folder_name);
+        (!raw.is_empty() && raw.len() >= 2 && (stem == raw || stem.starts_with(&raw)))
+            || (!normalized.is_empty()
+                && normalized.len() >= 2
+                && (stem == normalized || stem.starts_with(&normalized)))
+    }
+    /// Bundled known-games table: normalized game title -> relative
+    /// Windows exe paths (lowercase, `/` separators). Generated at build
+    /// time by `scripts/generate_known_games.py` from the Discord
+    /// detectable-apps API plus a small curated overrides file. Paths
+    /// are matched by suffix. Loaded once per scan / store detection
+    /// and dropped right after, so it costs 0 MB of idle RAM.
+    /// (Mirror of `src-tauri/src/stores.rs` — keep in sync.)
+    pub type KnownGames = HashMap<String, Vec<String>>;
+
+    /// Parse the bundled known-games JSON. Malformed input yields an
+    /// empty table — the scan continues on the other signals. Pure.
+    pub fn parse_known_games(json: &str) -> KnownGames {
+        serde_json::from_str(json).unwrap_or_default()
+    }
+
+    /// Load the bundled table. Unlike the Tauri crate (which embeds it
+    /// with `include_str!`), the verify crate reads it from disk so the
+    /// crate still compiles before the file is generated; a missing or
+    /// unreadable file yields an empty table, and the generated-file
+    /// tests below fail loudly on that.
+    pub fn load_known_games() -> KnownGames {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../src-tauri/known_games.json");
+        std::fs::read_to_string(path)
+            .map(|s| parse_known_games(&s))
+            .unwrap_or_default()
+    }
+
+    /// Does this exe match a listed path for the folder's game in the
+    /// known-games table? Pure — unit-tested.
+    pub fn known_game_match(known: &KnownGames, folder_name: &str, exe: &Path) -> bool {
+        let Some(paths) = known.get(&normalize_name(folder_name)) else {
+            return false;
+        };
+        let cand = normalize_name(&exe.to_string_lossy());
+        paths.iter().any(|rel| cand.ends_with(&normalize_name(rel)))
+    }
+    fn path_score(exe: &Path) -> i32 {
+        let p = exe.to_string_lossy().replace('\\', "/").to_lowercase();
+        let mut score = 0;
+        if p.contains("binaries/win64") || p.contains("bin/x64") {
+            score += 60;
+        } else if p.contains("win64") {
+            score += 40;
+        } else if p.contains("/x64/") || p.contains("/x64") {
+            score += 30;
+        }
+        if exe
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_lowercase().contains("shipping"))
+            .unwrap_or(false)
+        {
+            score += 30;
+        }
+        const PENALIZED: &[&str] = &[
+            "/engine/",
+            "/tools/",
+            "/redist",
+            "/support/",
+            "/plugins/",
+            "/mods/",
+            "/editor/",
+            "/_commonredist/",
+        ];
+        if PENALIZED.iter().any(|seg| p.contains(seg)) {
+            score -= 80;
+        }
+        score.min(90)
+    }
+    fn has_unity_data_dir(exe: &Path) -> bool {
+        let Some(stem) = exe.file_stem().and_then(|s| s.to_str()) else {
+            return false;
+        };
+        let Some(parent) = exe.parent() else {
+            return false;
+        };
+        parent.join(format!("{stem}_Data")).is_dir()
+    }
+    pub fn score_exe(
+        exe: &Path,
+        folder_name: &str,
+        shortcut: bool,
+        registry: bool,
+        known: &KnownGames,
+    ) -> (i32, &'static str) {
+        let stem = exe
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        let mut parts: Vec<(i32, &'static str)> = Vec::new();
+        if shortcut {
+            parts.push((200, "shortcut"));
+        }
+        if known_game_match(known, folder_name, exe) {
+            parts.push((180, "known game"));
+        }
+        if registry {
+            parts.push((150, "registry"));
+        }
+        if has_unity_data_dir(exe) {
+            parts.push((100, "unity data"));
+        }
+        if acronym_matches(&stem, folder_name) {
+            parts.push((90, "acronym"));
+        }
+        let path = path_score(exe);
+        if path != 0 {
+            parts.push((path, "path"));
+        }
+        let words: Vec<&str> = folder_name
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| w.len() >= 3)
+            .collect();
+        if words.iter().any(|w| stem.contains(&w.to_lowercase())) {
+            parts.push((50, "name"));
+        }
+        let size = std::fs::metadata(exe).map(|m| m.len()).unwrap_or(0);
+        if size > 0 && size < 1_000_000 {
+            parts.push((-20, "tiny"));
+        }
+        let score: i32 = parts.iter().map(|(p, _)| p).sum();
+        let source = parts
+            .iter()
+            .filter(|(p, _)| *p > 0)
+            .max_by_key(|(p, _)| *p)
+            .map(|(_, label)| *label)
+            .unwrap_or("largest");
+        (score, source)
+    }
+    pub fn confidence_of(score: i32) -> &'static str {
+        if score >= 150 {
+            "high"
+        } else if score >= 60 {
+            "medium"
+        } else {
+            "low"
+        }
+    }
+    pub fn rank_exes(
+        exes: &[PathBuf],
+        folder_name: &str,
+        shortcuts: &HashSet<String>,
+        registry: &HashSet<String>,
+        known: &KnownGames,
+    ) -> Vec<RankedExe> {
+        let mut scored: Vec<(RankedExe, u64)> = exes
+            .iter()
+            .map(|exe| {
+                let key = exe.to_string_lossy().to_lowercase();
+                let (score, source) = score_exe(
+                    exe,
+                    folder_name,
+                    shortcuts.contains(&key),
+                    registry.contains(&key),
+                    known,
+                );
+                let size = std::fs::metadata(exe).map(|m| m.len()).unwrap_or(0);
+                (
+                    RankedExe {
+                        exe_path: exe.to_string_lossy().into_owned(),
+                        score,
+                        source: source.to_string(),
+                    },
+                    size,
+                )
+            })
+            .collect();
+        scored.sort_by(|a, b| {
+            b.0.score
+                .cmp(&a.0.score)
+                .then(b.1.cmp(&a.1))
+                .then(a.0.exe_path.cmp(&b.0.exe_path))
+        });
+        scored.into_iter().map(|(r, _)| r).collect()
+    }
+    pub fn parse_lnk_target(bytes: &[u8]) -> Option<String> {
+        if bytes.len() < 76 {
+            return None;
+        }
+        if u32::from_le_bytes(bytes[0..4].try_into().ok()?) != 0x0000_004c {
+            return None;
+        }
+        let flags = u32::from_le_bytes(bytes[20..24].try_into().ok()?);
+        let has_id_list = flags & 0x0000_0001 != 0;
+        let has_link_info = flags & 0x0000_0002 != 0;
+        if !has_link_info {
+            return None;
+        }
+        let mut off = 76usize;
+        if has_id_list {
+            if off + 2 > bytes.len() {
+                return None;
+            }
+            let id_size = u16::from_le_bytes(bytes[off..off + 2].try_into().ok()?) as usize;
+            off += 2 + id_size + 2;
+        }
+        if off + 28 > bytes.len() {
+            return None;
+        }
+        let info_size = u32::from_le_bytes(bytes[off..off + 4].try_into().ok()?) as usize;
+        if info_size < 28 || off + info_size > bytes.len() {
+            return None;
+        }
+        let limit = off + info_size;
+        let local_off = u32::from_le_bytes(bytes[off + 12..off + 16].try_into().ok()?) as usize;
+        let unicode_off = u32::from_le_bytes(bytes[off + 24..off + 28].try_into().ok()?) as usize;
+        let unicode_off2 = if info_size >= 36 {
+            u32::from_le_bytes(bytes[off + 28..off + 32].try_into().ok()?) as usize
+        } else {
+            0
+        };
+        let read_ansi = |start: usize| -> Option<String> {
+            if start == 0 || off + start >= limit {
+                return None;
+            }
+            let mut end = off + start;
+            while end < limit && bytes[end] != 0 {
+                end += 1;
+            }
+            let s = String::from_utf8(bytes[off + start..end].to_vec()).ok()?;
+            if s.is_empty() {
+                None
+            } else {
+                Some(s)
+            }
+        };
+        let read_unicode = |start: usize| -> Option<String> {
+            if start == 0 || off + start + 1 >= limit {
+                return None;
+            }
+            let mut units = Vec::new();
+            let mut i = off + start;
+            while i + 1 < limit {
+                let u = u16::from_le_bytes(bytes[i..i + 2].try_into().ok()?);
+                if u == 0 {
+                    break;
+                }
+                units.push(u);
+                i += 2;
+            }
+            let s = String::from_utf16(&units).ok()?;
+            if s.is_empty() {
+                None
+            } else {
+                Some(s)
+            }
+        };
+        if let Some(s) = read_unicode(unicode_off) {
+            return Some(s);
+        }
+        if let Some(s) = read_unicode(unicode_off2) {
+            return Some(s);
+        }
+        read_ansi(local_off)
+    }
+    pub fn collect_shortcut_targets() -> HashSet<String> {
+        let mut out = HashSet::new();
+        let mut dirs: Vec<PathBuf> = Vec::new();
+        if let Ok(profile) = std::env::var("USERPROFILE") {
+            dirs.push(PathBuf::from(&profile).join("Desktop"));
+        }
+        if let Ok(public) = std::env::var("PUBLIC") {
+            dirs.push(PathBuf::from(&public).join("Desktop"));
+        }
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            dirs.push(PathBuf::from(&appdata).join(r"Microsoft\Windows\Start Menu\Programs"));
+        }
+        if let Ok(progdata) = std::env::var("ProgramData") {
+            dirs.push(PathBuf::from(&progdata).join(r"Microsoft\Windows\Start Menu\Programs"));
+        }
+        for dir in dirs {
+            collect_lnks(&dir, 0, 3, &mut out);
+        }
+        out
+    }
+    fn collect_lnks(dir: &Path, depth: u32, max_depth: u32, out: &mut HashSet<String>) {
+        if depth > max_depth {
+            return;
+        }
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            if entry.file_type().map(|t| t.is_symlink()).unwrap_or(false) {
+                continue;
+            }
+            let p = entry.path();
+            if p.is_dir() {
+                collect_lnks(&p, depth + 1, max_depth, out);
+            } else if p
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.eq_ignore_ascii_case("lnk"))
+                == Some(true)
+            {
+                if let Ok(bytes) = std::fs::read(&p) {
+                    if let Some(target) = parse_lnk_target(&bytes) {
+                        let t = target.trim().to_string();
+                        if t.to_lowercase().ends_with(".exe") && Path::new(&t).is_file() {
+                            out.insert(t.to_lowercase());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    pub fn strip_icon_index(icon: &str) -> &str {
+        let s = icon.trim();
+        // Strip the index first, then any surrounding quotes: the value is
+        // usually `"C:\Game\Game.exe",0` (quotes INSIDE the index).
+        let s = match s.rfind(',') {
+            Some(i) if !s[i + 1..].is_empty() && s[i + 1..].chars().all(|c| c.is_ascii_digit()) => {
+                &s[..i]
+            }
+            _ => s,
+        };
+        s.trim_matches('"')
+    }
+    pub fn icon_points_inside(icon: &str, folder: &str) -> bool {
+        let icon_norm = icon.replace('\\', "/").to_lowercase();
+        let folder_norm = folder.replace('\\', "/").to_lowercase();
+        let folder_norm = folder_norm.trim_end_matches('/');
+        icon_norm.ends_with(".exe") && icon_norm.starts_with(&format!("{folder_norm}/"))
     }
     fn walk_exes(dir: &Path, depth: u32, max_depth: u32, out: &mut Vec<PathBuf>) {
         if depth > max_depth {
@@ -782,11 +1189,41 @@ pub mod stores_pure {
             assert!(is_installer_exe("benchmark", &empty));
             assert!(is_installer_exe("easyanticheat_setup", &empty));
             assert!(is_installer_exe("battleye", &empty));
+            // Hard denylist (v0.2.3): uninstallers, deleters, cleaners,
+            // installers, prerequisites, servers.
+            for stem in [
+                "uninst",
+                "remove",
+                "remover",
+                "delete",
+                "cleanup",
+                "cleaner",
+                "wipe",
+                "purge",
+                "reset",
+                "repair",
+                "modify",
+                "install",
+                "installer",
+                "autorun",
+                "bootstrap",
+                "directx",
+                "oalinst",
+                "physx",
+                "bugsplat",
+                "beservice",
+                "dedicated",
+                "server",
+            ] {
+                assert!(is_installer_exe(stem, &empty), "{stem}");
+            }
             // Real games are never filtered — including Launcher.exe.
             assert!(!is_installer_exe("launcher", &empty));
             assert!(!is_installer_exe("fortniteclient-win64-shipping", &empty));
             assert!(!is_installer_exe("game", &empty));
             assert!(!is_installer_exe("setup_game", &empty));
+            assert!(!is_installer_exe("remnant2", &empty));
+            assert!(!is_installer_exe("code", &empty));
         }
 
         #[test]
@@ -868,6 +1305,292 @@ pub mod stores_pure {
             // Missing folder contributes nothing.
             assert!(scan_folders(&["/does/not/exist".to_string()]).is_empty());
             let _ = std::fs::remove_dir_all(&root);
+        }
+
+        #[test]
+        fn acronym_matches_solves_cryptic_names() {
+            assert!(acronym_matches("gta5", "Grand Theft Auto V"));
+            assert!(acronym_matches("rdr2", "Red Dead Redemption 2"));
+            assert!(acronym_matches("bg3", "Baldur's Gate 3"));
+            assert!(acronym_matches("bg3_dx11", "Baldur's Gate 3"));
+            assert!(acronym_matches("cod", "Call of Duty"));
+            assert!(acronym_matches("tesv", "The Elder Scrolls V"));
+            assert!(acronym_matches("cs2", "Counter-Strike 2"));
+            assert!(!acronym_matches("witcher3", "The Witcher 3"));
+            assert!(!acronym_matches("control", "Control"));
+            assert!(!acronym_matches("doom", "DOOM Eternal"));
+        }
+
+        #[test]
+        fn known_game_match_covers_famous_mismatches() {
+            let known = parse_known_games(
+                r#"{"cyberpunk2077":["bin/x64/cyberpunk2077.exe"],"grandtheftautov":["gta5.exe"],"reddeadredemption2":["rdr2.exe"],"baldursgate3":["bin/bg3.exe","bin/bg3_dx11.exe"],"thewitcher3":["bin/x64/witcher3.exe"],"thewitcher3wildhunt":["bin/x64/witcher3.exe"]}"#,
+            );
+            assert!(known_game_match(
+                &known,
+                "Cyberpunk 2077",
+                Path::new(r"C:\Games\Cyberpunk 2077\bin\x64\Cyberpunk2077.exe")
+            ));
+            assert!(known_game_match(
+                &known,
+                "Grand Theft Auto V",
+                Path::new(r"C:\Games\Grand Theft Auto V\GTA5.exe")
+            ));
+            assert!(known_game_match(
+                &known,
+                "Red Dead Redemption 2",
+                Path::new(r"C:\Games\Red Dead Redemption 2\RDR2.exe")
+            ));
+            assert!(known_game_match(
+                &known,
+                "Baldur's Gate 3",
+                Path::new(r"C:\Games\Baldur's Gate 3\bin\bg3.exe")
+            ));
+            assert!(known_game_match(
+                &known,
+                "Baldur's Gate 3",
+                Path::new(r"C:\Games\Baldur's Gate 3\bin\bg3_dx11.exe")
+            ));
+            assert!(known_game_match(
+                &known,
+                "The Witcher 3: Wild Hunt",
+                Path::new(r"C:\Games\The Witcher 3\bin\x64\witcher3.exe")
+            ));
+            assert!(!known_game_match(
+                &known,
+                "Some Random Game",
+                Path::new(r"C:\Games\Some Random Game\game.exe")
+            ));
+        }
+
+        #[test]
+        fn generated_known_games_has_no_denylisted_exes_and_no_duplicates() {
+            let known = load_known_games();
+            assert!(
+                !known.is_empty(),
+                "known_games.json is missing or empty — run scripts/generate_known_games.py"
+            );
+            let mut pairs = 0;
+            for (title, paths) in &known {
+                assert!(!title.is_empty(), "empty title in known_games.json");
+                let mut seen: HashSet<&str> = HashSet::new();
+                for path in paths {
+                    assert!(
+                        seen.insert(path.as_str()),
+                        "duplicate exe {path} for {title}"
+                    );
+                    assert!(path.ends_with(".exe"), "non-exe entry {path} for {title}");
+                    let stem = path
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or(path.as_str())
+                        .strip_suffix(".exe")
+                        .unwrap_or(path.as_str());
+                    assert!(
+                        !is_installer_exe(stem, &[]),
+                        "denylisted exe {path} for {title} in known_games.json"
+                    );
+                    pairs += 1;
+                }
+            }
+            assert!(pairs > 10_000, "expected >10k exe entries, got {pairs}");
+        }
+
+        #[test]
+        fn generated_known_games_covers_curated_titles() {
+            let known = load_known_games();
+            assert!(
+                !known.is_empty(),
+                "known_games.json is missing or empty — run scripts/generate_known_games.py"
+            );
+            let cp = known.get("cyberpunk2077").expect("cyberpunk2077 missing");
+            assert!(cp.iter().any(|p| p == "bin/x64/cyberpunk2077.exe"));
+            let gta = known
+                .get("grandtheftautov")
+                .expect("grandtheftautov missing");
+            assert!(gta.iter().any(|p| p == "gta5.exe"));
+            let bg3 = known.get("baldursgate3").expect("baldursgate3 missing");
+            assert!(bg3.iter().any(|p| p == "bin/bg3.exe"));
+            assert!(bg3.iter().any(|p| p == "bin/bg3_dx11.exe"));
+            let witcher = known.get("thewitcher3").expect("thewitcher3 missing");
+            assert!(witcher.iter().any(|p| p == "bin/x64/witcher3.exe"));
+            assert!(
+                known.len() > 10_000,
+                "expected >10k titles, got {}",
+                known.len()
+            );
+        }
+
+        #[test]
+        fn score_exe_ranks_known_game_and_unity_first() {
+            let empty: HashSet<String> = HashSet::new();
+            let known = parse_known_games(
+                r#"{"cyberpunk2077":["bin/x64/cyberpunk2077.exe"],"grandtheftautov":["gta5.exe"],"baldursgate3":["bin/bg3.exe","bin/bg3_dx11.exe"]}"#,
+            );
+            let root = std::env::temp_dir().join("p4-verify-score-cp");
+            let _ = std::fs::remove_dir_all(&root);
+            let game = root.join("Cyberpunk 2077");
+            std::fs::create_dir_all(game.join("bin").join("x64")).unwrap();
+            std::fs::write(game.join("bin").join("x64").join("Cyberpunk2077.exe"), b"x").unwrap();
+            std::fs::write(game.join("REDprelauncher.exe"), b"x").unwrap();
+            let ranked = rank_exes(
+                &[
+                    game.join("REDprelauncher.exe"),
+                    game.join("bin").join("x64").join("Cyberpunk2077.exe"),
+                ],
+                "Cyberpunk 2077",
+                &empty,
+                &empty,
+                &known,
+            );
+            assert_eq!(ranked.len(), 2);
+            assert!(
+                ranked[0].exe_path.ends_with("Cyberpunk2077.exe"),
+                "{ranked:?}"
+            );
+            assert_eq!(ranked[0].source, "known game");
+            assert_eq!(confidence_of(ranked[0].score), "high");
+            // GTA V: the known table wins (it is also an acronym match).
+            let gta = root.join("Grand Theft Auto V");
+            std::fs::create_dir_all(&gta).unwrap();
+            std::fs::write(gta.join("GTA5.exe"), b"x").unwrap();
+            std::fs::write(gta.join("PlayGTAV.exe"), b"xxxxxxxxxx").unwrap();
+            let ranked = rank_exes(
+                &[gta.join("PlayGTAV.exe"), gta.join("GTA5.exe")],
+                "Grand Theft Auto V",
+                &empty,
+                &empty,
+                &known,
+            );
+            assert!(ranked[0].exe_path.ends_with("GTA5.exe"), "{ranked:?}");
+            assert_eq!(ranked[0].source, "known game");
+            // Call of Duty: `cod.exe` may or may not be in the generated
+            // table (Discord lists CoD titles); either way the pick is
+            // the same exe — only the winning-signal label differs.
+            let cod = root.join("Call of Duty");
+            std::fs::create_dir_all(&cod).unwrap();
+            std::fs::write(cod.join("cod.exe"), b"x").unwrap();
+            std::fs::write(cod.join("PlayCOD.exe"), b"xxxxxxxxxx").unwrap();
+            let ranked = rank_exes(
+                &[cod.join("PlayCOD.exe"), cod.join("cod.exe")],
+                "Call of Duty",
+                &empty,
+                &empty,
+                &known,
+            );
+            assert!(ranked[0].exe_path.ends_with("cod.exe"), "{ranked:?}");
+            assert!(matches!(
+                ranked[0].source.as_str(),
+                "known game" | "acronym"
+            ));
+            let hk = root.join("Hollow Knight");
+            std::fs::create_dir_all(hk.join("Hollow Knight_Data")).unwrap();
+            std::fs::write(hk.join("Hollow Knight.exe"), b"x").unwrap();
+            std::fs::write(hk.join("Launcher.exe"), b"xxxxxxxxxx").unwrap();
+            let ranked = rank_exes(
+                &[hk.join("Launcher.exe"), hk.join("Hollow Knight.exe")],
+                "Hollow Knight",
+                &empty,
+                &empty,
+                &known,
+            );
+            assert!(
+                ranked[0].exe_path.ends_with("Hollow Knight.exe"),
+                "{ranked:?}"
+            );
+            assert_eq!(ranked[0].source, "unity data");
+            let _ = std::fs::remove_dir_all(&root);
+        }
+
+        /// Build a minimal synthetic `.lnk`: 76-byte header, optional
+        /// IDList, then a LinkInfo block with the given target path.
+        fn make_lnk(path: &str, with_id_list: bool, unicode: bool) -> Vec<u8> {
+            let mut b = vec![0u8; 76];
+            b[0..4].copy_from_slice(&0x0000_004cu32.to_le_bytes());
+            let mut flags = 0x0000_0002u32; // HasLinkInfo
+            if with_id_list {
+                flags |= 0x0000_0001; // HasLinkTargetIDList
+            }
+            b[20..24].copy_from_slice(&flags.to_le_bytes());
+            if with_id_list {
+                b.extend_from_slice(&2u16.to_le_bytes()); // IDListSize = 2
+                b.extend_from_slice(&2u16.to_le_bytes()); // one item, size 2
+                b.extend_from_slice(&0u16.to_le_bytes()); // TerminalID
+            }
+            let ansi = path.as_bytes();
+            let header_size: usize = if unicode { 36 } else { 28 };
+            let uni_len = if unicode {
+                path.encode_utf16().count() * 2 + 2
+            } else {
+                0
+            };
+            let info_size = header_size + ansi.len() + 1 + uni_len;
+            let mut info = vec![0u8; info_size];
+            info[0..4].copy_from_slice(&(info_size as u32).to_le_bytes());
+            info[4..8].copy_from_slice(&1u32.to_le_bytes());
+            info[12..16].copy_from_slice(&(header_size as u32).to_le_bytes());
+            if unicode {
+                let uni_off = header_size + ansi.len() + 1;
+                info[24..28].copy_from_slice(&(uni_off as u32).to_le_bytes());
+            }
+            info[header_size..header_size + ansi.len()].copy_from_slice(ansi);
+            if unicode {
+                let uni_off = header_size + ansi.len() + 1;
+                let mut j = uni_off;
+                for u in path.encode_utf16() {
+                    info[j..j + 2].copy_from_slice(&u.to_le_bytes());
+                    j += 2;
+                }
+            }
+            b.extend_from_slice(&info);
+            b
+        }
+
+        #[test]
+        fn parse_lnk_target_reads_local_base_path() {
+            let target = r"C:\Games\Hades\Hades.exe";
+            assert_eq!(
+                parse_lnk_target(&make_lnk(target, false, false)).as_deref(),
+                Some(target)
+            );
+            assert_eq!(
+                parse_lnk_target(&make_lnk(target, true, false)).as_deref(),
+                Some(target)
+            );
+            assert_eq!(
+                parse_lnk_target(&make_lnk(target, true, true)).as_deref(),
+                Some(target)
+            );
+            assert_eq!(parse_lnk_target(&[]), None);
+            assert_eq!(parse_lnk_target(&[0u8; 100]), None);
+            assert_eq!(parse_lnk_target(&make_lnk("", false, false)), None);
+        }
+
+        #[test]
+        fn registry_helpers_strip_index_and_check_folder() {
+            assert_eq!(strip_icon_index(r"C:\Game\Game.exe,0"), r"C:\Game\Game.exe");
+            assert_eq!(
+                strip_icon_index(r#""C:\Game\Game.exe",0"#),
+                r"C:\Game\Game.exe"
+            );
+            assert_eq!(strip_icon_index(r"C:\Game\Game.exe"), r"C:\Game\Game.exe");
+            assert_eq!(
+                strip_icon_index(r"C:\Game\My, Game.exe"),
+                r"C:\Game\My, Game.exe"
+            );
+            assert!(icon_points_inside(
+                r"C:\Games\Hades\Hades.exe",
+                r"C:\Games\Hades"
+            ));
+            assert!(icon_points_inside(
+                r"C:\Games\Hades\bin\Hades.exe",
+                r"C:\Games\Hades"
+            ));
+            assert!(!icon_points_inside(r"C:\Other\Game.exe", r"C:\Games\Hades"));
+            assert!(!icon_points_inside(
+                r"C:\Games\Hades\readme.txt",
+                r"C:\Games\Hades"
+            ));
         }
     }
 }

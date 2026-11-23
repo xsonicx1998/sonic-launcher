@@ -37,7 +37,11 @@ fn open() -> Connection {
             name     TEXT NOT NULL,
             exe_path TEXT NOT NULL UNIQUE,
             source   TEXT NOT NULL DEFAULT 'scan',
-            added_at INTEGER NOT NULL
+            added_at INTEGER NOT NULL,
+            folder   TEXT NOT NULL DEFAULT '',
+            exe_override TEXT,
+            confidence TEXT NOT NULL DEFAULT 'low',
+            pick_source TEXT NOT NULL DEFAULT 'largest'
         );",
     )
     .unwrap();
@@ -230,9 +234,9 @@ mod tests {
         let conn = open();
         let add = |name: &str, exe: &str| {
             conn.execute(
-                "INSERT OR IGNORE INTO scanned_games (name, exe_path, source, added_at)
-                 VALUES (?1, ?2, 'scan', ?3)",
-                params![name, exe, 1000],
+                "INSERT OR IGNORE INTO scanned_games (name, exe_path, source, added_at, folder, confidence, pick_source)
+                 VALUES (?1, ?2, 'scan', ?3, ?4, ?5, ?6)",
+                params![name, exe, 1000, "C:\\Games", "low", "largest"],
             )
             .unwrap()
         };
@@ -256,5 +260,113 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM scanned_games", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn scanned_games_folder_upsert_and_override_survive_rescan() {
+        // Mirrors the SQL in db.rs add_scanned_game / set_scanned_exe_override.
+        let conn = open();
+        let folder = "C:\\Games\\Cyberpunk 2077";
+        // First scan: known-game pick.
+        conn.execute(
+            "INSERT OR IGNORE INTO scanned_games (name, exe_path, source, added_at, folder, confidence, pick_source)
+             VALUES (?1, ?2, 'scan', ?3, ?4, ?5, ?6)",
+            params![
+                "Cyberpunk 2077",
+                "C:\\Games\\Cyberpunk 2077\\bin\\x64\\Cyberpunk2077.exe",
+                1000,
+                folder,
+                "high",
+                "known game"
+            ],
+        )
+        .unwrap();
+        let id: i64 = conn.last_insert_rowid();
+        // Rescan picks a different exe for the same folder: the row is
+        // updated in place (same id, no duplicate).
+        let existing: Option<(i64, Option<String>)> = conn
+            .query_row(
+                "SELECT id, exe_override FROM scanned_games WHERE folder = ?1",
+                params![folder],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .ok();
+        assert_eq!(existing, Some((id, None)));
+        conn.execute(
+            "UPDATE scanned_games SET name = ?1, exe_path = ?2, confidence = ?3, pick_source = ?4 WHERE id = ?5",
+            params![
+                "Cyberpunk 2077",
+                "C:\\Games\\Cyberpunk 2077\\REDprelauncher.exe",
+                "low",
+                "largest",
+                id
+            ],
+        )
+        .unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM scanned_games", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
+        // The user overrides the exe: a later rescan must not clobber it.
+        conn.execute(
+            "UPDATE scanned_games SET exe_override = ?1 WHERE id = ?2",
+            params!["C:\\Games\\Cyberpunk 2077\\bin\\x64\\Cyberpunk2077.exe", id],
+        )
+        .unwrap();
+        let existing: Option<(i64, Option<String>)> = conn
+            .query_row(
+                "SELECT id, exe_override FROM scanned_games WHERE folder = ?1",
+                params![folder],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .ok();
+        assert!(existing.unwrap().1.is_some());
+        // Effective exe = override, not the stored pick.
+        let effective: String = conn
+            .query_row(
+                "SELECT COALESCE(exe_override, exe_path) FROM scanned_games WHERE id = ?1",
+                params![id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            effective,
+            "C:\\Games\\Cyberpunk 2077\\bin\\x64\\Cyberpunk2077.exe"
+        );
+        // Legacy row adoption: a row with no folder is adopted by exe path.
+        conn.execute(
+            "INSERT INTO scanned_games (name, exe_path, source, added_at)
+             VALUES (?1, ?2, 'scan', ?3)",
+            params!["Legacy Game", "C:\\Games\\Legacy\\Legacy.exe", 1000],
+        )
+        .unwrap();
+        let legacy_id = conn.last_insert_rowid();
+        let legacy: Option<i64> = conn
+            .query_row(
+                "SELECT id FROM scanned_games WHERE exe_path = ?1 AND folder = ''",
+                params!["C:\\Games\\Legacy\\Legacy.exe"],
+                |r| r.get(0),
+            )
+            .ok();
+        assert_eq!(legacy, Some(legacy_id));
+        conn.execute(
+            "UPDATE scanned_games SET name = ?1, folder = ?2, confidence = ?3, pick_source = ?4 WHERE id = ?5",
+            params![
+                "Legacy Game",
+                "C:\\Games\\Legacy",
+                "medium",
+                "name",
+                legacy_id
+            ],
+        )
+        .unwrap();
+        let folder_back: String = conn
+            .query_row(
+                "SELECT folder FROM scanned_games WHERE id = ?1",
+                params![legacy_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(folder_back, "C:\\Games\\Legacy");
     }
 }

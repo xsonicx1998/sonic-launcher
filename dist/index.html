@@ -262,8 +262,9 @@ function refreshGames(){
     core.invoke('list_manual_games').catch(function(){ return []; })
   ]).then(function(res){
     var steam = res[0] || [], manual = res[1] || [];
-    if(!steam.length && !manual.length){ return; }
-    GAMES = steam.map(mapSteamGame).concat(manual.map(mapManualGame));
+    if(steam.length || manual.length){
+      GAMES = steam.map(mapSteamGame).concat(manual.map(mapManualGame));
+    }
     sel = -1;
     buildBgSlides();
     buildRow();

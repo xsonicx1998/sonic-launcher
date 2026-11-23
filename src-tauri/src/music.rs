@@ -270,9 +270,11 @@ pub fn ensure_ytdlp(app: &AppHandle) -> Result<String, String> {
     Ok(version)
 }
 
-/// Search for a game's theme music. Returns the top 5 results
-/// (title + duration + url), unfiltered — the frontend shows them in
-/// "Change Theme Music", and the auto-pick applies the smart filter.
+/// Search for a game's theme music. Returns up to 5 results
+/// (title + duration + url), smart-filtered: only candidates that are
+/// 45–480s with no excluded words are returned, recommended pick first
+/// — so "Change Theme Music" lists only viable candidates and the
+/// auto-pick agrees with the manual list.
 /// `fallback` switches the YouTube query to `soundtrack OST`;
 /// `source` "soundcloud" searches SoundCloud instead of YouTube.
 /// The game title is sanitized first (trademarks / edition suffixes).
@@ -332,11 +334,22 @@ pub fn search_theme_music(
             continue;
         }
         if let Some(c) = parse_search_line(line) {
-            out_candidates.push(c);
+            // Smart filter: only viable theme candidates are returned.
+            if theme_candidate_ok(&c.title, c.duration_secs) {
+                out_candidates.push(c);
+            }
         }
         if out_candidates.len() >= 5 {
             break;
         }
+    }
+    // The recommended pick leads the list, so "Change Theme Music" and
+    // the auto-pick agree on the best candidate (the first viable
+    // result, by construction).
+    if let Some(best) = pick_theme_candidate(&out_candidates) {
+        let best = best.clone();
+        out_candidates.retain(|c| c.id != best.id);
+        out_candidates.insert(0, best);
     }
     Ok(out_candidates)
 }

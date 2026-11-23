@@ -40,9 +40,13 @@
   <div id="topBar" style="position:relative;z-index:2;padding:clamp(22px,2.4vw,38px) clamp(28px,3.6vw,64px) 0;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)">
     <div style="display:flex;align-items:center">
       <span style="font-size:clamp(18px,1.35vw,24px);font-weight:500;color:rgba(255,255,255,.98)">Games</span><span style="font-size:clamp(18px,1.35vw,24px);font-weight:300;color:rgba(255,255,255,.52);margin-left:32px">Media</span>
-      <span style="margin-left:auto;display:flex;align-items:center;gap:20px;font-size:16px;color:rgba(255,255,255,.92)"><span style="position:relative;cursor:pointer" onclick="showLbl('lblSearch')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg><span id="lblSearch" style="display:none;position:absolute;top:28px;left:50%;transform:translateX(-50%);font-size:11px;white-space:nowrap">Search</span></span><span style="position:relative;cursor:pointer" onclick="showLbl('lblSettings');openSettings()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span id="lblSettings" style="display:none;position:absolute;top:28px;left:50%;transform:translateX(-50%);font-size:11px;white-space:nowrap">Settings</span></span><span style="position:relative;width:26px;height:26px;display:inline-flex;flex:none"><span style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#8B20FF,#00C8FF);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:500">M</span><span style="position:absolute;right:-1px;bottom:-1px;width:8px;height:8px;border-radius:50%;background:#2fd45a;border:1.5px solid rgba(0,0,0,.55)"></span></span><span id="clock" style="font-size:clamp(17px,1.25vw,22px);font-weight:300;letter-spacing:.02em;font-variant-numeric:tabular-nums">19:30</span></span>
+      <span style="margin-left:auto;display:flex;align-items:center;gap:20px;font-size:16px;color:rgba(255,255,255,.92)"><span style="position:relative;cursor:pointer" onclick="showLbl('lblSearch');openSearch()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg><span id="lblSearch" style="display:none;position:absolute;top:28px;left:50%;transform:translateX(-50%);font-size:11px;white-space:nowrap">Search</span></span><span style="position:relative;cursor:pointer" onclick="showLbl('lblSettings');openSettings()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span id="lblSettings" style="display:none;position:absolute;top:28px;left:50%;transform:translateX(-50%);font-size:11px;white-space:nowrap">Settings</span></span><span style="position:relative;width:26px;height:26px;display:inline-flex;flex:none"><span style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#8B20FF,#00C8FF);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:500">M</span><span style="position:absolute;right:-1px;bottom:-1px;width:8px;height:8px;border-radius:50%;background:#2fd45a;border:1.5px solid rgba(0,0,0,.55)"></span></span><span id="clock" style="font-size:clamp(17px,1.25vw,22px);font-weight:300;letter-spacing:.02em;font-variant-numeric:tabular-nums">19:30</span></span>
     </div>
     <div class="ps5-row-viewport" style="margin-top:14px"><div id="row" class="ps5-row-track"></div><div id="rowTitle" class="focused-game-title"></div></div>
+  </div>
+  <div id="searchBox" style="display:none;position:absolute;top:clamp(84px,9.5vh,120px);right:clamp(28px,3.6vw,64px);width:340px;max-width:80vw;background:rgba(20,22,32,.97);border:1px solid rgba(255,255,255,.16);border-radius:12px;padding:12px;box-shadow:0 12px 40px rgba(0,0,0,.6);z-index:9;font-size:14px;color:rgba(255,255,255,.92)">
+    <input id="searchInput" type="text" placeholder="Search games&hellip;" autocomplete="off" oninput="renderSearchResults(this.value)" onkeydown="if(event.key==='Enter'){var h=searchGameMatches(this.value);if(h.length){pickSearchResult(h[0]);}}" style="width:100%;box-sizing:border-box;padding:9px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.45);color:#fff;font-size:14px;outline:none">
+    <div id="searchResults" style="margin-top:8px;max-height:300px;overflow-y:auto"></div>
   </div>
   <div id="heroBlock" style="position:absolute;z-index:2;left:clamp(28px,3.6vw,64px);bottom:clamp(48px,6.5vh,84px);max-width:clamp(470px,44vw,740px)">
     <div id="gameLogo" style="font-size:clamp(34px,3.2vw,54px);font-weight:500;line-height:1.05;letter-spacing:.01em;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)"></div>
@@ -125,8 +129,8 @@
     <div onclick="closeSettings()" style="position:absolute;top:20px;right:clamp(28px,3.6vw,64px);cursor:pointer;font-size:15px;color:rgba(255,255,255,.8)"><span style="display:inline-flex;vertical-align:-2px;margin-right:6px;width:14px;height:14px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M6 6l12 12M18 6L6 18"/></svg></span>Close</div>
   </div>
   <div id="miniPill" style="position:absolute;left:50%;transform:translateX(-50%);bottom:16px;z-index:7;display:flex;align-items:center;gap:10px;padding:8px 14px;border-radius:99px;background:rgba(18,22,30,.55);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.10)">
-    <span class="eq" style="display:flex;align-items:flex-end;height:14px"><span></span><span></span><span></span></span>
-    <span id="trackName" style="font-size:12.5px;font-weight:500;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)"></span>
+    <span class="eq" onclick="toggleThemePlayback()" title="Pause / resume theme music" style="display:flex;align-items:flex-end;height:14px;cursor:pointer"><span></span><span></span><span></span></span>
+    <span id="trackName" onclick="toggleThemePlayback()" title="Pause / resume theme music" style="font-size:12.5px;font-weight:500;white-space:nowrap;cursor:pointer;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)"></span>
     <span onclick="replayBoot()" style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:400;border:1px solid rgba(255,255,255,.35);border-radius:99px;padding:4px 10px"><span style="display:inline-flex;width:12px;height:12px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 3v4h-4"/></svg></span>Boot</span>
     <span onclick="toggleCC()" style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:400;border:1px solid rgba(255,255,255,.35);border-radius:99px;padding:4px 10px">PS</span>
   </div>
@@ -228,6 +232,7 @@ function setHeroBg(idx){
 function render(){
   var g = GAMES[sel];
   document.getElementById('rowTitle').innerHTML = '<span class="title-in">'+escHtml(g.row)+'</span> <span class="ps5-platform-badge">'+escHtml(g.platform || (g.key === 'astro' ? 'PS5' : 'PS4'))+'</span>';
+  /* g.logo must stay pre-escaped HTML from its verified producers only (hardcoded demo strings; baseTileFields with escHtml) -- never assign raw/untrusted markup here. */
   document.getElementById('gameLogo').innerHTML = g.logo;
   document.getElementById('gameTag').textContent = g.tag;
   document.getElementById('gameMeta').textContent = g.meta;
@@ -238,8 +243,8 @@ function render(){
   document.getElementById('trophyE').textContent = g.trophye;
   document.getElementById('trackName').textContent = g.music;
   var gNews = GAMES[2] || GAMES[0];
-  document.getElementById('newsCard').style.backgroundImage = 'url('+gNews.bg+')';
-  document.getElementById('clipCard').style.backgroundImage = 'url('+GAMES[0].bg+')';
+  document.getElementById('newsCard').style.backgroundImage = 'url("'+gNews.bg+'")';
+  document.getElementById('clipCard').style.backgroundImage = 'url("'+GAMES[0].bg+'")';
   setHeroBg(sel);
 }
 function tileSmPx(){ var v = (window.innerWidth || document.documentElement.clientWidth)*0.052; return Math.min(108, Math.max(64, v)); }
@@ -326,9 +331,55 @@ function skipBoot(){
 function replayBoot(){ bootSeq(); }
 function selPower(i){ var items=document.querySelectorAll('.pwItem'); items.forEach(function(el,j){ if(j===i){ el.style.border='1.5px solid rgba(255,255,255,.85)'; el.style.background='rgba(255,255,255,.12)'; } else { el.style.border='1.5px solid transparent'; el.style.background='transparent'; } var d=el.querySelector('.pwDesc'); if(d){ d.style.display=(j===i)?'block':'none'; } }); }
 function showLbl(id){ ['lblSearch','lblSettings'].forEach(function(x){ var e=document.getElementById(x); if(e){ e.style.display=(x===id)?'block':'none'; } }); }
+/* ---- Game search: filter the library by title, pick a result to jump to it. ---- */
+function openSearch(){
+  var box = document.getElementById('searchBox');
+  if(!box){ return; }
+  if(box.style.display === 'block'){ closeSearch(); return; }
+  box.style.display = 'block';
+  renderSearchResults('');
+  var inp = document.getElementById('searchInput');
+  if(inp){ inp.value = ''; inp.focus(); }
+  playSfx('select');
+}
+function closeSearch(){
+  var box = document.getElementById('searchBox');
+  if(box){ box.style.display = 'none'; }
+}
+function searchGameMatches(q){
+  q = String(q == null ? '' : q).toLowerCase().trim();
+  var out = [];
+  GAMES.forEach(function(g, i){
+    if(!q || String(g.row || '').toLowerCase().indexOf(q) !== -1 || String(g.name || '').toLowerCase().indexOf(q) !== -1){ out.push(i); }
+  });
+  return out;
+}
+function renderSearchResults(q){
+  var box = document.getElementById('searchResults');
+  if(!box){ return; }
+  var hits = searchGameMatches(q);
+  if(!hits.length){ box.innerHTML = '<div style="font-size:13px;color:rgba(255,255,255,.6)">No games match.</div>'; return; }
+  box.innerHTML = hits.map(function(i){
+    return '<div onclick="pickSearchResult(' + i + ')" style="padding:8px 10px;border-radius:8px;cursor:pointer;margin-top:4px;background:rgba(255,255,255,.07);font-size:13px">' + escHtml(GAMES[i].row) + '</div>';
+  }).join('');
+}
+function pickSearchResult(i){
+  if(i == null || !GAMES[i]){ return; }
+  selectGame(i);
+  closeSearch();
+}
+/* Mini player pill: tap the track to pause / resume the theme music. */
+function toggleThemePlayback(){
+  var a = themeAudioEl();
+  if(!a){ return; }
+  if(!a.paused){ a.pause(); return; }
+  if(a.src){ var p = a.play(); if(p && p.catch){ p.catch(function(){}); } return; }
+  var g = GAMES[sel];
+  if(g){ playCachedMusic(g); }
+}
 /* ---- Phase 1: Steam detection, launch, manual games, gamepad, keyboard ---- */
 function tauriCore(){ return (window.__TAURI__ && window.__TAURI__.core) ? window.__TAURI__.core : null; }
-function escHtml(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function escHtml(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 function placeholderArt(name){
   var initial = String(name || '?').replace(/[^A-Za-z0-9]/g,'').charAt(0).toUpperCase() || '?';
   var svg = "<svg xmlns='http://www.w3.org/2000/svg' width='460' height='460'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#8B20FF'/><stop offset='.5' stop-color='#00C8FF'/><stop offset='1' stop-color='#F02DCD'/></linearGradient></defs><rect width='460' height='460' fill='url(#g)'/><text x='230' y='285' font-family='Arial,sans-serif' font-size='190' font-weight='bold' fill='rgba(255,255,255,0.85)' text-anchor='middle'>" + initial + "</text></svg>";
@@ -482,11 +533,15 @@ function removeManualGame(id){
 }
 /* Keyboard: Left/Right move, Enter plays, Esc closes panels. */
 document.addEventListener('keydown', function(e){
+  if(e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')){
+    if(e.key === 'Escape'){ closeSearch(); closeSettings(); closePower(); hideGameMenu(); e.target.blur(); }
+    return;
+  }
   if(isBootVisible()){ skipBoot(); e.preventDefault(); return; }
   if(e.key === 'ArrowLeft'){ playSfx('nav'); selectGame(Math.max(0, sel - 1)); e.preventDefault(); }
   else if(e.key === 'ArrowRight'){ playSfx('nav'); selectGame(Math.min(GAMES.length - 1, sel + 1)); e.preventDefault(); }
   else if(e.key === 'Enter'){ launchSelected(); e.preventDefault(); }
-  else if(e.key === 'Escape'){ closeSettings(); closePower(); hideGameMenu(); var cc = document.getElementById('cc'); if(cc){ cc.style.display = 'none'; } }
+  else if(e.key === 'Escape'){ closeSettings(); closePower(); hideGameMenu(); closeSearch(); var cc = document.getElementById('cc'); if(cc){ cc.style.display = 'none'; } }
 });
 /* Gamepad: dpad / left stick moves (250ms debounce), A plays, B closes panels. */
 var padPrevA = false, padPrevB = false, padLastNav = 0;
@@ -514,7 +569,7 @@ function pollGamepad(){
       if(a && !padPrevA){ launchSelected(); }
       padPrevA = a;
       var b = !!(gp.buttons[1] && gp.buttons[1].pressed);
-      if(b && !padPrevB){ closeSettings(); closePower(); hideGameMenu(); var cc2 = document.getElementById('cc'); if(cc2){ cc2.style.display = 'none'; } }
+      if(b && !padPrevB){ closeSettings(); closePower(); hideGameMenu(); closeSearch(); var cc2 = document.getElementById('cc'); if(cc2){ cc2.style.display = 'none'; } }
       padPrevB = b;
     }
   } catch(e){}
@@ -826,9 +881,12 @@ function buildGameMenu(){
   var g = GAMES[sel];
   var m = document.getElementById('gameMenu');
   var html = '<div style="font-weight:500;margin-bottom:8px">' + escHtml(g ? g.row : '') + '</div>';
-  if(!g || !g.source || g.source === 'demo'){
-    html += '<div style="color:rgba(255,255,255,.6);font-size:13px">Demo game \u2014 add your own games with + to play.</div>';
+  if(!g){
+    html += '<div style="color:rgba(255,255,255,.6);font-size:13px">No game selected.</div>';
   } else {
+    if(!g.source || g.source === 'demo'){
+      html += '<div style="color:rgba(255,255,255,.6);font-size:13px">Demo game \u2014 add your own games with + to play.</div>';
+    }
     html += '<div onclick="changeThemeMusic()" style="padding:9px 10px;border-radius:8px;cursor:pointer;background:rgba(255,255,255,.07)">Change Theme Music&hellip;</div>';
     html += '<div onclick="pickThemeFile()" style="padding:9px 10px;border-radius:8px;cursor:pointer;margin-top:6px;background:rgba(255,255,255,.07)">Choose music file&hellip;</div>';
     html += '<div onclick="pasteThemeUrl()" style="padding:9px 10px;border-radius:8px;cursor:pointer;margin-top:6px;background:rgba(255,255,255,.07)">Paste music URL&hellip;</div>';

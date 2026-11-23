@@ -1,0 +1,1 @@
+{"$schema":"https://schema.tauri.app/config/2","description":"Phase 1: the frontend opens the .exe file picker (dialog plugin) and hides/shows the main window while a game runs.","identifier":"default","permissions":["core:window:allow-hide","core:window:allow-show","dialog:allow-open"],"windows":["main"]}

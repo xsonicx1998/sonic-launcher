@@ -15,6 +15,12 @@ serde_json = "1"
 tauri-plugin-dialog = "2"
 open = "5"
 rusqlite = { version = "0.32", features = ["bundled"] }
+# Phase 2/3: HTTP downloads (Steam CDN, SteamGridDB, yt-dlp binary).
+ureq = { version = "2", features = ["tls"] }
+# Phase 3: base64 data-URI fallback for art/music files.
+base64 = "0.22"
+# Phase 5: detect a running game process by exe name.
+sysinfo = "0.32"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

@@ -2,7 +2,11 @@
   "$schema": "https://schema.tauri.app/config/2",
   "app": {
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$APPDATA/**"]
+      }
     },
     "windows": [
       {

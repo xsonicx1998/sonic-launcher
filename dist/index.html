@@ -29,7 +29,7 @@
     <div id="gameMeta" style="font-size:12px;font-weight:300;color:rgba(255,255,255,.58);margin-top:6px;font-variant-numeric:tabular-nums;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)"></div>
     <div style="display:flex;gap:10px;margin-top:16px;align-items:center">
       <div id="playBtn" class="ps5-action-btn" tabindex="0" onclick="launchSelected()" style="color:#fff;font-weight:500;font-size:15px;width:clamp(190px,15vw,240px);text-align:center;border-radius:99px;cursor:pointer">Play</div>
-      <div class="ps5-action-btn" tabindex="0" style="width:clamp(44px,3.4vw,54px);border-radius:50%;font-size:15px;cursor:pointer"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg></div>
+      <div class="ps5-action-btn" tabindex="0" onclick="toggleGameMenu()" style="width:clamp(44px,3.4vw,54px);border-radius:50%;font-size:15px;cursor:pointer"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg></div>
     </div>
   </div>
   <div style="position:absolute;z-index:2;right:clamp(28px,3.6vw,64px);bottom:clamp(48px,6.5vh,84px);width:clamp(230px,18vw,310px)">
@@ -57,8 +57,23 @@
     <div class="pwItem" onclick="selPower(1)" style="margin-top:8px;padding:13px 14px;cursor:pointer"><div style="font-size:15px"><span style="display:inline-flex;vertical-align:-3px;margin-right:8px;width:17px;height:17px"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="8.5"/></svg></span>Shut Down</div><div class="pwDesc" style="display:none;font-size:12px;color:rgba(255,255,255,.65);margin-top:5px;line-height:1.45">Close all games and apps, and turn off your PS5. Select this before unplugging the AC power cord.</div></div>
     <div class="pwItem" onclick="selPower(2)" style="margin-top:8px;padding:13px 14px;cursor:pointer"><div style="font-size:15px"><span style="display:inline-flex;vertical-align:-3px;margin-right:8px;width:17px;height:17px"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 3v4h-4"/></svg></span>Restart</div></div>
   </div>
-  <div id="settings" style="display:none;position:absolute;inset:0;background:radial-gradient(ellipse 90% 60% at 8% 0%,rgba(200,190,170,.28),rgba(8,8,14,.97) 55%);z-index:8">
+  <div id="settings" style="display:none;position:absolute;inset:0;background:radial-gradient(ellipse 90% 60% at 8% 0%,rgba(200,190,170,.28),rgba(8,8,14,.97) 55%);z-index:8;overflow-y:auto">
     <div style="padding:34px 0 0 60px;font-size:26px;font-weight:300">Settings</div>
+    <div id="launcherSettings" style="margin:22px 60px 0;padding:16px 20px;border:1px solid rgba(255,255,255,.18);border-radius:12px;background:rgba(10,12,20,.55);font-size:14px;color:rgba(255,255,255,.9)">
+      <div style="font-size:16px;font-weight:500;margin-bottom:12px">Sonic Launcher</div>
+      <div style="margin-bottom:12px">SteamGridDB API key <span id="sgdbStatus" style="color:rgba(255,255,255,.55);font-size:12px"></span><br>
+        <input id="sgdbKey" type="password" placeholder="Paste your SteamGridDB key" autocomplete="off" style="width:340px;max-width:60vw;margin-top:6px;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.45);color:#fff;font-size:13px">
+        <button onclick="saveSgdbKey()" style="margin-left:8px;padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.3);background:rgba(139,32,255,.5);color:#fff;cursor:pointer;font-size:13px">Save</button>
+      </div>
+      <div style="margin-bottom:12px"><label><input id="musicEnabled" type="checkbox" checked onchange="saveMusicToggle(this)" style="vertical-align:-2px"> Theme music</label>
+        <label style="margin-left:16px">Volume <input id="musicVolume" type="range" min="0" max="100" value="30" onchange="saveMusicVolume(this)" oninput="saveMusicVolume(this)" style="vertical-align:-3px;width:120px"></label>
+      </div>
+      <div style="margin-bottom:12px"><label><input id="minOnLaunch" type="checkbox" checked onchange="saveMinOnLaunch(this)" style="vertical-align:-2px"> Minimize launcher when a game starts</label></div>
+      <div>Scan folders <span style="color:rgba(255,255,255,.55);font-size:12px">(extra folders to search for games)</span>
+        <div id="scanFolderList" style="margin-top:6px;font-size:12.5px;color:rgba(255,255,255,.75)"></div>
+        <button onclick="addScanFolderFlow()" style="margin-top:8px;padding:7px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.3);background:rgba(0,200,255,.25);color:#fff;cursor:pointer;font-size:13px">Add folder&hellip;</button>
+      </div>
+    </div>
     <div style="display:flex;margin-top:26px">
       <div style="width:340px;margin-left:110px;font-size:16px;color:rgba(255,255,255,.85)">
         <div style="padding:11px 14px"><span style="display:inline-flex;vertical-align:-3px;margin-right:8px;width:18px;height:18px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.5" r="1" fill="currentColor" stroke="none"/></svg></span>User's Guide, Health and Safety, and Other Information</div>
@@ -214,11 +229,13 @@ function selectGame(i){
   newEl.innerHTML = tileFocusedHTML(GAMES[sel]);
   anchorRow();
   render();
+  scheduleThemeMusic();
+  loadRealPlaytime();
 }
 function toggleCC(){ var c = document.getElementById('cc'); c.style.display = (c.style.display === 'none' || c.style.display === '') ? 'block' : 'none'; document.getElementById('powerMenu').style.display = 'none'; }
 function openPower(){ document.getElementById('powerMenu').style.display = 'block'; }
 function closePower(){ document.getElementById('powerMenu').style.display = 'none'; }
-function openSettings(){ document.getElementById('settings').style.display = 'block'; }
+function openSettings(){ document.getElementById('settings').style.display = 'block'; populateLauncherSettings(); }
 function closeSettings(){ document.getElementById('settings').style.display = 'none'; }
 var now = new Date(); var hh=now.getHours(),ap=hh>=12?'PM':'AM';hh=hh%12;if(hh===0)hh=12;document.getElementById('clock').textContent = hh+':'+('0'+now.getMinutes()).slice(-2)+' '+ap;
 
@@ -259,22 +276,30 @@ function mapManualGame(m){
   g.key = 'manual-' + m.id; g.source = 'manual'; g.manualId = m.id; g.exePath = m.exe_path;
   return g;
 }
+/* Phase 4: one unified list (Steam + manual + other stores + scanned). */
+function mapUnifiedGame(u){
+  var label = (u.source === 'steam') ? 'Steam' : (u.source === 'manual') ? 'Added manually' : u.source;
+  var g = baseTileFields(u.name, label, (u.source || 'PC') + '  \u2022  PC');
+  g.key = u.key; g.source = u.source; g.appid = u.appid || null; g.exePath = u.exe_path || null;
+  if(u.source === 'manual' && u.key){
+    var parts = String(u.key).split('-');
+    g.manualId = parseInt(parts[parts.length - 1], 10) || null;
+  }
+  return g;
+}
 /* Replace the demo row with real games when any exist; otherwise keep demos. */
 function refreshGames(){
   var core = tauriCore();
   if(!core){ return; }
-  Promise.all([
-    core.invoke('detect_steam_games').catch(function(){ return []; }),
-    core.invoke('list_manual_games').catch(function(){ return []; })
-  ]).then(function(res){
-    var steam = res[0] || [], manual = res[1] || [];
-    if(steam.length || manual.length){
-      GAMES = steam.map(mapSteamGame).concat(manual.map(mapManualGame));
+  core.invoke('list_all_games').catch(function(){ return []; }).then(function(list){
+    if(list && list.length){
+      GAMES = list.map(mapUnifiedGame);
     }
     sel = -1;
     buildBgSlides();
     buildRow();
     selectGame(0);
+    applyRealArt();
   });
 }
 var toastTimer = null;
@@ -291,6 +316,11 @@ function stopRunningPoll(win){
   if(runningPoll){ clearInterval(runningPoll); runningPoll = null; }
   document.body.classList.remove('game-running');
   if(win && win.show){ win.show().catch(function(){}); }
+  if(currentSessionId){
+    var core = tauriCore();
+    if(core){ core.invoke('end_playtime_session', { sessionId: currentSessionId }).catch(function(){}); }
+    currentSessionId = null;
+  }
 }
 /* Poll Steam RunningAppID every 2s; restore the launcher when the game exits. */
 function startRunningPoll(win){
@@ -315,12 +345,23 @@ function launchSelected(){
   var core = tauriCore();
   if(!core){ showToast('Launcher backend not available'); return; }
   var args = (g.source === 'steam') ? { appid: g.appid } : { exePath: g.exePath };
+  stopThemeMusic();
   core.invoke('launch_game', args).then(function(){
+    /* Phase 5: start a playtime session; Steam ends it via the
+       RunningAppID poll, exe games via the process poll. */
+    core.invoke('start_playtime_session', { gameKey: g.key, gameName: g.row }).then(function(id){
+      if(g.source === 'steam'){ currentSessionId = id; }
+      else { startExePoll(g, id); }
+    }).catch(function(){});
     if(g.source === 'steam'){
-      document.body.classList.add('game-running');
       var w = null;
       try { w = (window.__TAURI__.window && window.__TAURI__.window.getCurrentWindow) ? window.__TAURI__.window.getCurrentWindow() : null; } catch(e){}
-      if(w && w.hide){ w.hide().catch(function(){}); }
+      getSetting('minimize_on_launch', '1').then(function(v){
+        if(v !== '0'){
+          document.body.classList.add('game-running');
+          if(w && w.hide){ w.hide().catch(function(){}); }
+        }
+      });
       startRunningPoll(w);
     } else {
       showToast('Launched ' + g.row);
@@ -360,7 +401,7 @@ document.addEventListener('keydown', function(e){
   if(e.key === 'ArrowLeft'){ selectGame(Math.max(0, sel - 1)); e.preventDefault(); }
   else if(e.key === 'ArrowRight'){ selectGame(Math.min(GAMES.length - 1, sel + 1)); e.preventDefault(); }
   else if(e.key === 'Enter'){ launchSelected(); e.preventDefault(); }
-  else if(e.key === 'Escape'){ closeSettings(); closePower(); var cc = document.getElementById('cc'); if(cc){ cc.style.display = 'none'; } }
+  else if(e.key === 'Escape'){ closeSettings(); closePower(); hideGameMenu(); var cc = document.getElementById('cc'); if(cc){ cc.style.display = 'none'; } }
 });
 /* Gamepad: dpad / left stick moves (250ms debounce), A plays, B closes panels. */
 var padPrevA = false, padPrevB = false, padLastNav = 0;
@@ -382,13 +423,333 @@ function pollGamepad(){
       if(a && !padPrevA){ launchSelected(); }
       padPrevA = a;
       var b = !!(gp.buttons[1] && gp.buttons[1].pressed);
-      if(b && !padPrevB){ closeSettings(); closePower(); var cc2 = document.getElementById('cc'); if(cc2){ cc2.style.display = 'none'; } }
+      if(b && !padPrevB){ closeSettings(); closePower(); hideGameMenu(); var cc2 = document.getElementById('cc'); if(cc2){ cc2.style.display = 'none'; } }
       padPrevB = b;
     }
   } catch(e){}
   requestAnimationFrame(pollGamepad);
 }
 requestAnimationFrame(pollGamepad);
+
+/* ---- Phases 2-5: art, theme music, game menu, settings, playtime ---- */
+function getSetting(key, fallback){
+  var core = tauriCore();
+  if(!core){ return Promise.resolve(fallback); }
+  return core.invoke('get_setting', { key: key }).then(function(v){
+    return (v === null || v === undefined || v === '') ? fallback : v;
+  }).catch(function(){ return fallback; });
+}
+function fmtDur(s){ s = Math.round(s); return Math.floor(s/60) + ':' + ('0' + (s%60)).slice(-2); }
+
+/* Phase 2: fetch real art per real game. Tile uses the base64 data URI
+   (small, bulletproof); hero uses convertFileSrc with a data-URI
+   fallback on error. */
+function applyRealArt(){
+  var core = tauriCore();
+  if(!core){ return; }
+  GAMES.forEach(function(g, i){
+    if(!g.source || g.source === 'demo'){ return; }
+    core.invoke('get_game_art', { gameKey: g.key, appid: g.appid || null, name: g.row }).then(function(art){
+      if(!art){ return; }
+      var tileUrl = art.tile_data_uri || ((core.convertFileSrc && art.tile_path) ? core.convertFileSrc(art.tile_path) : null);
+      var heroUrl = (core.convertFileSrc && art.hero_path) ? core.convertFileSrc(art.hero_path) : (art.hero_data_uri || null);
+      if(tileUrl){
+        g.img = tileUrl;
+        var el = tileEls[i+1];
+        if(el){ el.innerHTML = (i === sel) ? tileFocusedHTML(g) : tilePlainHTML(g); }
+        if(i === sel){ var ci = document.getElementById('cardImg'); if(ci){ ci.src = tileUrl; } }
+      }
+      if(heroUrl){
+        g.bg = heroUrl;
+        var slide = bgSlides[i];
+        if(slide){
+          slide.onerror = function(){
+            if(art.hero_data_uri && slide.src !== art.hero_data_uri){ slide.src = art.hero_data_uri; }
+          };
+          slide.src = heroUrl;
+        }
+        if(i === sel){ render(); }
+      }
+    }).catch(function(){});
+  });
+}
+
+/* Phase 3: theme music playback (single <audio>, 500ms debounce). */
+var themeAudio = null;
+var themeDebounce = null;
+var themeAutoTried = {};
+var THEME_EXCLUDED = ['cover','remix','piano','1 hour','1hr','live','extended','loop','8d','slowed','reverb'];
+function themeOk(c){
+  if(!c || c.duration_secs == null || c.duration_secs < 60 || c.duration_secs > 360){ return false; }
+  var t = String(c.title || '').toLowerCase();
+  for(var i = 0; i < THEME_EXCLUDED.length; i++){ if(t.indexOf(THEME_EXCLUDED[i]) !== -1){ return false; } }
+  return true;
+}
+function themeAudioEl(){
+  if(!themeAudio){
+    themeAudio = new Audio();
+    themeAudio.loop = true;
+    themeAudio.volume = 0.3;
+    themeAudio.addEventListener('error', function(){
+      var g = GAMES[sel];
+      if(!g || themeAudio.dataset.fallbackTried === g.key){ return; }
+      themeAudio.dataset.fallbackTried = g.key;
+      var core = tauriCore();
+      if(core){ core.invoke('get_music_data_uri', { gameKey: g.key }).then(function(uri){
+        if(uri){ themeAudio.src = uri; themeAudio.play().catch(function(){}); }
+      }).catch(function(){}); }
+    });
+  }
+  return themeAudio;
+}
+function playThemeSrc(src){
+  var a = themeAudioEl();
+  a.pause();
+  a.dataset.fallbackTried = '';
+  a.src = src;
+  var p = a.play();
+  if(p && p.catch){ p.catch(function(){}); }
+}
+function stopThemeMusic(){
+  if(themeDebounce){ clearTimeout(themeDebounce); themeDebounce = null; }
+  if(themeAudio){ themeAudio.pause(); }
+}
+function playCachedMusic(g){
+  var core = tauriCore();
+  return core.invoke('get_game_music', { gameKey: g.key }).then(function(m){
+    if(!m || !m.path){ return false; }
+    var url = (core.convertFileSrc) ? core.convertFileSrc(m.path) : null;
+    if(url){ playThemeSrc(url); return true; }
+    return core.invoke('get_music_data_uri', { gameKey: g.key }).then(function(uri){
+      if(uri){ playThemeSrc(uri); return true; }
+      return false;
+    });
+  }).catch(function(){ return false; });
+}
+function scheduleThemeMusic(){
+  if(themeDebounce){ clearTimeout(themeDebounce); }
+  themeDebounce = setTimeout(function(){
+    var g = GAMES[sel];
+    if(!g || !g.source || g.source === 'demo'){ stopThemeMusic(); return; }
+    getSetting('music_enabled', '1').then(function(en){
+      if(en === '0'){ stopThemeMusic(); return; }
+      getSetting('music_volume', '30').then(function(vol){
+        themeAudioEl().volume = Math.max(0, Math.min(1, (parseInt(vol, 10) || 30) / 100));
+      });
+      playCachedMusic(g).then(function(played){
+        if(played){ return; }
+        if(themeAutoTried[g.key]){ return; }
+        themeAutoTried[g.key] = true;
+        var core = tauriCore();
+        core.invoke('ensure_ytdlp').catch(function(){ return null; }).then(function(){
+          return core.invoke('search_theme_music', { gameName: g.row });
+        }).then(function(list){
+          var pick = null;
+          for(var i = 0; i < (list || []).length; i++){ if(themeOk(list[i])){ pick = list[i]; break; } }
+          if(!pick){ return; }
+          return core.invoke('download_theme_music', { gameKey: g.key, videoId: pick.id }).then(function(path){
+            if(path && GAMES[sel] === g){ playCachedMusic(g); }
+          });
+        }).catch(function(){});
+      });
+    });
+  }, 500);
+}
+
+/* Phase 3: the "..." game menu (Change Theme Music / pick file). */
+var gameMenu = document.createElement('div');
+gameMenu.id = 'gameMenu';
+gameMenu.style.cssText = 'display:none;position:absolute;z-index:9;left:clamp(28px,3.6vw,64px);bottom:clamp(120px,15vh,180px);width:340px;max-width:80vw;background:rgba(20,22,32,.97);border:1px solid rgba(255,255,255,.16);border-radius:12px;padding:12px;box-shadow:0 12px 40px rgba(0,0,0,.6);font-size:14px;color:rgba(255,255,255,.92)';
+document.body.appendChild(gameMenu);
+function toggleGameMenu(){
+  var m = document.getElementById('gameMenu');
+  if(!m){ return; }
+  if(m.style.display === 'block'){ m.style.display = 'none'; return; }
+  buildGameMenu();
+  m.style.display = 'block';
+}
+function hideGameMenu(){ var m = document.getElementById('gameMenu'); if(m){ m.style.display = 'none'; } }
+function buildGameMenu(){
+  var g = GAMES[sel];
+  var m = document.getElementById('gameMenu');
+  var html = '<div style="font-weight:500;margin-bottom:8px">' + escHtml(g ? g.row : '') + '</div>';
+  if(!g || !g.source || g.source === 'demo'){
+    html += '<div style="color:rgba(255,255,255,.6);font-size:13px">Demo game \u2014 add your own games with + to play.</div>';
+  } else {
+    html += '<div onclick="changeThemeMusic()" style="padding:9px 10px;border-radius:8px;cursor:pointer;background:rgba(255,255,255,.07)">Change Theme Music&hellip;</div>';
+    html += '<div onclick="pickThemeFile()" style="padding:9px 10px;border-radius:8px;cursor:pointer;margin-top:6px;background:rgba(255,255,255,.07)">Choose music file&hellip;</div>';
+    html += '<div onclick="hideGameMenu();openSettings()" style="padding:9px 10px;border-radius:8px;cursor:pointer;margin-top:6px;background:rgba(255,255,255,.07)">Settings</div>';
+    if(g.source === 'manual'){
+      html += '<div onclick="removeSelectedManual()" style="padding:9px 10px;border-radius:8px;cursor:pointer;margin-top:6px;background:rgba(240,45,205,.18)">Remove from launcher</div>';
+    }
+  }
+  html += '<div id="themeResults" style="margin-top:8px"></div>';
+  m.innerHTML = html;
+}
+function changeThemeMusic(){
+  var g = GAMES[sel]; if(!g){ return; }
+  var box = document.getElementById('themeResults');
+  if(box){ box.innerHTML = '<div style="font-size:13px;color:rgba(255,255,255,.6)">Searching YouTube&hellip;</div>'; }
+  var core = tauriCore();
+  core.invoke('ensure_ytdlp').catch(function(){}).then(function(){
+    return core.invoke('search_theme_music', { gameName: g.row });
+  }).then(function(list){
+    if(!box){ return; }
+    if(!list || !list.length){ box.innerHTML = '<div style="font-size:13px;color:rgba(255,255,255,.6)">No results found.</div>'; return; }
+    window.__themeResults = list;
+    var html = '';
+    list.forEach(function(c, i){
+      var dur = (c.duration_secs != null) ? fmtDur(c.duration_secs) : '?';
+      html += '<div onclick="pickThemeResult(' + i + ')" style="padding:8px 10px;border-radius:8px;cursor:pointer;margin-top:4px;background:rgba(255,255,255,.07);font-size:13px">' + escHtml(c.title) + ' <span style="color:rgba(255,255,255,.55)">' + dur + '</span></div>';
+    });
+    box.innerHTML = html;
+  }).catch(function(){ if(box){ box.innerHTML = '<div style="font-size:13px;color:#ff8a8a">Search failed.</div>'; } });
+}
+function pickThemeResult(i){
+  var g = GAMES[sel]; if(!g){ return; }
+  var list = window.__themeResults || [];
+  var c = list[i]; if(!c){ return; }
+  var box = document.getElementById('themeResults');
+  if(box){ box.innerHTML = '<div style="font-size:13px;color:rgba(255,255,255,.6)">Downloading&hellip;</div>'; }
+  var core = tauriCore();
+  core.invoke('download_theme_music', { gameKey: g.key, videoId: c.id }).then(function(){
+    showToast('Theme music set: ' + c.title);
+    hideGameMenu();
+    if(GAMES[sel] === g){ playCachedMusic(g); }
+  }).catch(function(err){ showToast('Could not download: ' + err); });
+}
+function pickThemeFile(){
+  var g = GAMES[sel]; if(!g){ return; }
+  var core = tauriCore();
+  core.invoke('pick_music_file', { gameKey: g.key }).then(function(path){
+    if(path){ showToast('Theme music set'); hideGameMenu(); if(GAMES[sel] === g){ playCachedMusic(g); } }
+  }).catch(function(err){ showToast('Could not pick file: ' + err); });
+}
+function removeSelectedManual(){
+  var g = GAMES[sel]; if(!g || !g.manualId){ return; }
+  removeManualGame(g.manualId);
+  hideGameMenu();
+}
+
+/* Phase 5: settings panel wiring. */
+function populateLauncherSettings(){
+  var core = tauriCore();
+  if(!core){ return; }
+  core.invoke('is_steamgriddb_key_set').then(function(set){
+    var s = document.getElementById('sgdbStatus');
+    if(s){ s.textContent = set ? '(key saved)' : '(not set)'; }
+  }).catch(function(){});
+  getSetting('music_enabled', '1').then(function(v){ var el = document.getElementById('musicEnabled'); if(el){ el.checked = (v !== '0'); } });
+  getSetting('music_volume', '30').then(function(v){ var el = document.getElementById('musicVolume'); if(el){ el.value = parseInt(v, 10) || 30; } });
+  getSetting('minimize_on_launch', '1').then(function(v){ var el = document.getElementById('minOnLaunch'); if(el){ el.checked = (v !== '0'); } });
+  refreshScanFolderList();
+}
+function saveSgdbKey(){
+  var core = tauriCore(); if(!core){ return; }
+  var input = document.getElementById('sgdbKey');
+  var key = input ? input.value : '';
+  core.invoke('set_steamgriddb_key', { key: key }).then(function(){
+    if(input){ input.value = ''; }
+    populateLauncherSettings();
+    showToast(key ? 'SteamGridDB key saved' : 'SteamGridDB key cleared');
+  }).catch(function(err){ showToast('Could not save key: ' + err); });
+}
+function saveMusicToggle(el){
+  var core = tauriCore();
+  if(core){ core.invoke('set_setting', { key: 'music_enabled', value: el.checked ? '1' : '0' }).catch(function(){}); }
+  if(!el.checked){ stopThemeMusic(); }
+}
+function saveMusicVolume(el){
+  var core = tauriCore();
+  if(core){ core.invoke('set_setting', { key: 'music_volume', value: String(el.value) }).catch(function(){}); }
+  if(themeAudio){ themeAudio.volume = Math.max(0, Math.min(1, el.value / 100)); }
+}
+function saveMinOnLaunch(el){
+  var core = tauriCore();
+  if(core){ core.invoke('set_setting', { key: 'minimize_on_launch', value: el.checked ? '1' : '0' }).catch(function(){}); }
+}
+function refreshScanFolderList(){
+  var core = tauriCore(); if(!core){ return; }
+  core.invoke('list_scan_folders').then(function(list){
+    var el = document.getElementById('scanFolderList'); if(!el){ return; }
+    window.__scanFolders = list || [];
+    if(!list || !list.length){ el.innerHTML = '<div style="color:rgba(255,255,255,.45)">No scan folders yet.</div>'; return; }
+    el.innerHTML = list.map(function(f, i){
+      return '<div style="padding:4px 0">' + escHtml(f) +
+        ' <span onclick="removeScanFolderIdx(' + i + ')" style="cursor:pointer;color:#ff8a8a;margin-left:8px">Remove</span>' +
+        ' <span onclick="rescanFolderIdx(' + i + ')" style="cursor:pointer;color:#7dd3fc;margin-left:8px">Scan now</span></div>';
+    }).join('');
+  }).catch(function(){});
+}
+function removeScanFolderIdx(i){
+  var list = window.__scanFolders || []; var f = list[i]; if(!f){ return; }
+  var core = tauriCore();
+  core.invoke('remove_scan_folder', { path: f }).then(function(){ refreshScanFolderList(); }).catch(function(err){ showToast('Could not remove: ' + err); });
+}
+function rescanFolderIdx(i){
+  var list = window.__scanFolders || []; var f = list[i]; if(!f){ return; }
+  var core = tauriCore();
+  core.invoke('scan_folders', { folders: [f] }).then(function(found){
+    showToast('Scan found ' + (found ? found.length : 0) + ' game(s)');
+    refreshGames();
+  }).catch(function(err){ showToast('Scan failed: ' + err); });
+}
+function addScanFolderFlow(){
+  var core = tauriCore(); if(!core){ return; }
+  var dlg = (window.__TAURI__ && window.__TAURI__.dialog) ? window.__TAURI__.dialog : null;
+  var pick;
+  if(dlg && dlg.open){
+    pick = dlg.open({ directory: true, multiple: false });
+  } else {
+    pick = core.invoke('plugin:dialog|open', { options: { directory: true, multiple: false } });
+  }
+  Promise.resolve(pick).then(function(folder){
+    if(!folder){ return; }
+    var path = (typeof folder === 'string') ? folder : (folder.path || folder);
+    if(!path){ return; }
+    return core.invoke('add_scan_folder', { path: path }).then(function(){
+      refreshScanFolderList();
+      return core.invoke('scan_folders', { folders: [path] });
+    }).then(function(found){
+      showToast('Added folder \u2014 found ' + (found ? found.length : 0) + ' game(s)');
+      refreshGames();
+    });
+  }).catch(function(err){ showToast('Could not add folder: ' + err); });
+}
+
+/* Phase 5: playtime. */
+var currentSessionId = null;
+var exePoll = null;
+function loadRealPlaytime(){
+  var g = GAMES[sel]; if(!g || !g.source || g.source === 'demo'){ return; }
+  var core = tauriCore(); if(!core){ return; }
+  core.invoke('get_playtime', { gameKey: g.key }).then(function(min){
+    if(GAMES[sel] !== g){ return; }
+    if(min && min > 0){
+      var hoursTxt = (min >= 60) ? (Math.floor(min / 60) + ' hours') : (min + ' minutes');
+      document.getElementById('gameStats').textContent = hoursTxt + '  \u2022  Last played ' + g.last;
+    }
+  }).catch(function(){});
+}
+function startExePoll(g, sessionId){
+  if(exePoll){ clearInterval(exePoll); exePoll = null; }
+  if(!g.exePath){ return; }
+  var exeName = String(g.exePath).split(/[\\/]/).pop() || '';
+  if(!exeName){ return; }
+  var core = tauriCore();
+  var seen = false, checks = 0;
+  exePoll = setInterval(function(){
+    checks++;
+    core.invoke('is_process_running', { exeName: exeName }).then(function(running){
+      if(running){ seen = true; }
+      else if(seen || checks >= 5){
+        clearInterval(exePoll); exePoll = null;
+        if(sessionId){ core.invoke('end_playtime_session', { sessionId: sessionId }).catch(function(){}); }
+      }
+    }).catch(function(){ clearInterval(exePoll); exePoll = null; });
+  }, 2000);
+}
+
 refreshGames();
 
 bootSeq();

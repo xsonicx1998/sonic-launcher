@@ -11,6 +11,9 @@
 //!   `set_cover_art_url`, `retry_art` (art.rs). The "Auto-fetch
 //!   cover art" toggle uses the generic `get_setting` / `set_setting`
 //!   with key `auto_fetch_art` (ON by default).
+//! - v0.2.6: exe-icon fallback (art.rs + exe_icon.rs) — the game's
+//!   own .exe icon, centered on the gradient card, when no other
+//!   art source has anything.
 //! - Phase 3: `ensure_ytdlp`, `search_theme_music`,
 //!   `download_theme_music`, `get_game_music`, `pick_music_file`,
 //!   `get_music_data_uri` (music.rs)
@@ -30,6 +33,7 @@
 
 mod art;
 mod db;
+mod exe_icon;
 mod http;
 mod khinsider;
 mod launch;
@@ -86,8 +90,9 @@ fn get_game_art(
     game_key: String,
     appid: Option<u32>,
     name: String,
+    exe_path: Option<String>,
 ) -> art::GameArt {
-    art::get_game_art(&app, &game_key, appid, &name)
+    art::get_game_art(&app, &game_key, appid, &name, exe_path.as_deref())
 }
 
 #[tauri::command]

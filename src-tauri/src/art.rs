@@ -23,6 +23,14 @@
 //! only. A manual cover (picked file, typed AppID, pasted image
 //! URL) is never overwritten by an automatic lookup.
 //!
+//! Last resort (v0.2.6): the game's own .exe icon, extracted
+//! with pure-Rust PE parsing (see `exe_icon.rs`) — only PNG
+//! icons >= 64 px, shown centered on the Sonic gradient card,
+//! never full-bleed. Cached in the art dir as `<key>-icon.png`
+//! and recorded as art_source "icon", so it is never
+//! re-extracted on every launch and never overwrites a manual
+//! cover or a resolved store lookup.
+//!
 //! Files are cached in `%APPDATA%\com.sonic.launcher\art\` and never
 //! re-downloaded while the cache file exists. The frontend gets both the
 //! local path (for `convertFileSrc`) and a base64 data URI (fallback when
@@ -49,6 +57,10 @@ pub struct GameArt {
     pub tile_data_uri: Option<String>,
     /// Base64 data URI of the hero (fallback when convertFileSrc fails).
     pub hero_data_uri: Option<String>,
+    /// `true` when the tile is the game's own .exe icon (v0.2.6):
+    /// the frontend renders it centered on the Sonic gradient
+    /// card instead of stretched full-bleed like a real cover.
+    pub is_icon: bool,
 }
 
 /// The art cache directory: `%APPDATA%\com.sonic.launcher\art`.
@@ -71,10 +83,10 @@ pub fn steam_cdn_urls(appid: u32) -> (String, String, String) {
     )
 }
 
-fn file_name(game_key: &str, kind: &str) -> String {
+fn safe_key(game_key: &str) -> String {
     // game_key is `steam-<appid>` / `manual-<id>` / `epic-<slug>` etc. —
     // safe for a file name (letters, digits, dashes).
-    let safe: String = game_key
+    game_key
         .chars()
         .map(|c| {
             if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
@@ -83,8 +95,17 @@ fn file_name(game_key: &str, kind: &str) -> String {
                 '_'
             }
         })
-        .collect();
-    format!("{safe}-{kind}.jpg")
+        .collect()
+}
+
+fn file_name(game_key: &str, kind: &str) -> String {
+    format!("{}-{kind}.jpg", safe_key(game_key))
+}
+
+/// Cache file for an extracted .exe icon (v0.2.6): PNG, not JPG,
+/// so the icon's transparency survives.
+fn icon_file_name(game_key: &str) -> String {
+    format!("{}-icon.png", safe_key(game_key))
 }
 
 fn mime_for(path: &PathBuf) -> &'static str {
@@ -122,7 +143,46 @@ fn build_art(tile: &PathBuf, hero: &PathBuf, capsule: &PathBuf) -> GameArt {
         capsule_path: path_str(capsule),
         tile_data_uri: data_uri(tile),
         hero_data_uri: data_uri(hero),
+        is_icon: false,
     }
+}
+
+/// Build the art for an extracted .exe icon (v0.2.6): the icon is
+/// the tile (and the capsule); there is no hero — the frontend
+/// keeps the gradient background instead of stretching the icon.
+fn build_icon_art(icon: &PathBuf) -> GameArt {
+    GameArt {
+        tile_path: path_str(icon),
+        hero_path: None,
+        capsule_path: path_str(icon),
+        tile_data_uri: data_uri(icon),
+        hero_data_uri: None,
+        is_icon: true,
+    }
+}
+
+/// Last-resort cover art (v0.2.6): the game's own .exe icon.
+/// A cached icon file is reused without re-parsing the exe; a
+/// fresh extraction is cached in the art dir and recorded as
+/// art_source "icon" for scanned games. Returns `None` when
+/// there is no exe path or the exe has no usable PNG icon.
+fn try_exe_icon(app: &AppHandle, game_key: &str, exe_path: Option<&str>) -> Option<GameArt> {
+    let Ok(dir) = art_dir(app) else {
+        return None;
+    };
+    let icon = dir.join(icon_file_name(game_key));
+    if let Ok(meta) = std::fs::metadata(&icon) {
+        if meta.len() > 0 {
+            return Some(build_icon_art(&icon));
+        }
+    }
+    let exe = exe_path?;
+    let bytes = crate::exe_icon::extract_exe_icon_png(std::path::Path::new(exe))?;
+    std::fs::write(&icon, &bytes).ok()?;
+    if let Some(id) = db::scanned_id_from_key(game_key) {
+        let _ = db::set_art_source(app, id, "icon");
+    }
+    Some(build_icon_art(&icon))
 }
 
 // ---------------------------------------------------------------------------
@@ -672,6 +732,12 @@ pub fn resolve_art_for_game(app: &AppHandle, game_key: &str, name: &str) -> ArtR
     if game.art_source.as_deref() == Some("manual") {
         return ArtResolve::Manual;
     }
+    // An exe-icon fallback is already cached on disk — nothing to
+    // look up, and a later store hit must not replace it silently
+    // (the user can still pick a manual cover instead).
+    if game.art_source.as_deref() == Some("icon") {
+        return ArtResolve::Found;
+    }
     // A cached Steam appid: download the CDN art, no lookup needed.
     if let Some(appid) = game.resolved_appid.and_then(|a| u32::try_from(a).ok()) {
         download_steam_art(app, game_key, appid);
@@ -740,6 +806,7 @@ pub fn run_art_lookup_worker(app: &AppHandle) {
         if game.art_source.as_deref() == Some("manual")
             || game.resolved_appid.is_some()
             || game.art_source.as_deref() == Some("gog")
+            || game.art_source.as_deref() == Some("icon")
         {
             continue;
         }
@@ -854,10 +921,19 @@ fn download_art(url: &str, dest: &PathBuf, auth: Option<&str>) -> bool {
 /// - Other games: SteamGridDB by name when a key is saved; otherwise
 ///   the keyless auto-fetch (Steam store search, then GOG Catalog)
 ///   when it is enabled.
+/// - Last resort (v0.2.6): the game's own .exe icon (PNG >= 64 px),
+///   centered on the gradient card — only when no other art exists
+///   at all.
 ///
 /// Never errors on download failure — returns whatever art could be
 /// obtained (possibly none), so the UI never breaks on a bad network.
-pub fn get_game_art(app: &AppHandle, game_key: &str, appid: Option<u32>, name: &str) -> GameArt {
+pub fn get_game_art(
+    app: &AppHandle,
+    game_key: &str,
+    appid: Option<u32>,
+    name: &str,
+    exe_path: Option<&str>,
+) -> GameArt {
     let Ok(dir) = art_dir(app) else {
         return GameArt::default();
     };
@@ -909,6 +985,14 @@ pub fn get_game_art(app: &AppHandle, game_key: &str, appid: Option<u32>, name: &
     } else {
         // No key: keyless auto-fetch (Steam store search, then GOG).
         let _ = resolve_art_for_game(app, game_key, name);
+    }
+
+    // Last resort: the game's own .exe icon — only when no other
+    // art exists at all (no tile file on disk).
+    if !tile.is_file() {
+        if let Some(icon) = try_exe_icon(app, game_key, exe_path) {
+            return icon;
+        }
     }
 
     build_art(&tile, &hero, &capsule)

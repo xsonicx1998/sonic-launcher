@@ -26,6 +26,7 @@ function makeEl(id) {
     getBoundingClientRect(){ return { left: 0, top: 0, width: 100, height: 100 }; },
     focus(){}, click(){}, play(){ return Promise.resolve(); }, pause(){},
     getContext(){ return null; },
+    parentElement: { style: {} },
   };
 }
 const elements = {};
@@ -54,6 +55,7 @@ let mockSettings = { music_enabled: '1', music_volume: '30', sfx_enabled: '1', s
 let mockSearchResults = {}; // key: source|fallback -> array of candidates
 let mockKhinsider = null;   // null = not found, string = cached path
 let mockCachedMusic = null; // null = none
+let mockArt = null;         // null = no art, object = get_game_art result
 global.window.__TAURI__ = {
   core: {
     invoke: (cmd, args) => {
@@ -76,6 +78,7 @@ global.window.__TAURI__ = {
         case 'set_cover_art_appid': return Promise.resolve(null);
         case 'set_cover_art_url': return Promise.resolve(null);
         case 'retry_art': return Promise.resolve('Cover art found');
+        case 'get_game_art': return Promise.resolve(mockArt);
         case 'get_app_version': return Promise.resolve('0.2.1');
         default: return Promise.resolve(null);
       }
@@ -129,10 +132,10 @@ const NEEDED_FNS = [
   'sfxAudioContext', 'sfxSetVolume', 'sfxPreload', 'sfxTryUrls', 'playSfx',
   'playBootSfx', 'fadeAudioParam', 'startPs5Ambient', 'stopPs5Ambient',
   'resumeHomeAudio', 'enterHome', 'spawnParticles', 'bootSeq', 'skipBoot',
-  'isBootVisible', 'tileFocusedHTML', 'escHtml', 'showToast',
+  'isBootVisible', 'tileFocusedHTML', 'tilePlainHTML', 'tileIconHTML', 'escHtml', 'showToast',
   'toggleGameMenu', 'buildGameMenu', 'hideGameMenu',
   'openSearch', 'closeSearch', 'searchGameMatches', 'renderSearchResults',
-  'pickSearchResult', 'toggleThemePlayback',
+  'pickSearchResult', 'toggleThemePlayback', 'applyRealArt',
   'baseTileFields', 'placeholderArt', 'mapUnifiedGame',
   'saveAutoFetchArt', 'copySgdbLink',
   'pickCoverArt', 'setCoverArtAppid', 'pasteCoverArtUrl', 'retryArt',
@@ -161,6 +164,11 @@ async function main() {
   // so eval'd function declarations resolve them).
   var themeAudio, themeDebounce, themeAutoTried, GAMES, sel, tileEls;
   var toastTimer = null;
+  var bgSlides = [];
+  // Stub: applyRealArt calls render() when a hero arrives; the harness
+  // only records that a render was requested.
+  var renderCalls = 0;
+  function render(){ renderCalls++; }
   var SFX_STEMS = ['boot', 'nav', 'select', 'launch', 'back', 'cc_open', 'ambient'];
   var SFX_EXTS = ['mp3', 'wav', 'ogg', 'm4a'];
   var sfxCtx, sfxGain, sfxBuffers = {}, sfxEnabled = true, sfxVolume = 0.8;
@@ -471,6 +479,80 @@ async function main() {
     assert.strictEqual(call.args.name, 'Hollow Knight', 'wrong name');
     assert.strictEqual(refreshGamesCalls, 1, 'expected a refresh after retry');
     assert.strictEqual(getEl('toast').textContent, 'Cover art found', 'toast should show the retry result');
+  });
+
+  console.log('Exe icon fallback (v0.2.6):');
+  await check('mapUnifiedGame maps art_is_icon to artIsIcon', async () => {
+    const u = { key: 'scan-7', name: 'Hollow Knight', source: 'scan', appid: null, exe_path: 'C:\\Games\\Hollow Knight\\Hollow Knight.exe', launch_uri: null, folder: 'C:\\Games\\Hollow Knight', confidence: 'high', pick_source: 'name', has_override: false, art_failed: false, art_is_icon: true };
+    assert.strictEqual(mapUnifiedGame(u).artIsIcon, true, 'artIsIcon should be true');
+    const u2 = Object.assign({}, u, { art_is_icon: false });
+    assert.strictEqual(mapUnifiedGame(u2).artIsIcon, false, 'artIsIcon should be false');
+    const u3 = Object.assign({}, u);
+    delete u3.art_is_icon;
+    assert.strictEqual(mapUnifiedGame(u3).artIsIcon, false, 'missing art_is_icon should be false');
+  });
+  await check('tilePlainHTML centers the icon on the gradient; normal tiles stay full-bleed', async () => {
+    const g = baseTileFields('Hollow Knight', 'scan', 'scan  \u2022  PC');
+    g.img = 'data:image/png;base64,AAA';
+    g.artIsIcon = true;
+    const iconHtml = tilePlainHTML(g);
+    assert(iconHtml.includes('linear-gradient(135deg,#8B20FF,#00C8FF,#F02DCD)'), 'icon tile should have the Sonic gradient: ' + iconHtml);
+    assert(iconHtml.includes('object-fit:contain'), 'icon tile should use contain: ' + iconHtml);
+    assert(iconHtml.includes('width:62%'), 'icon should be ~62% of the tile: ' + iconHtml);
+    assert(!iconHtml.includes('object-fit:cover'), 'icon tile must not use cover');
+    const g2 = baseTileFields('Hollow Knight', 'scan', 'scan  \u2022  PC');
+    g2.img = 'data:image/jpeg;base64,BBB';
+    const coverHtml = tilePlainHTML(g2);
+    assert(coverHtml.includes('object-fit:cover'), 'normal tile should use cover');
+    assert(!coverHtml.includes('linear-gradient(135deg,#8B20FF'), 'normal tile should not get the gradient');
+  });
+  await check('tileFocusedHTML keeps the focus ring for icon games', async () => {
+    const g = baseTileFields('Hollow Knight', 'scan', 'scan  \u2022  PC');
+    g.img = 'data:image/png;base64,AAA';
+    g.artIsIcon = true;
+    const html = tileFocusedHTML(g);
+    assert(html.includes('ps5-focus-ring'), 'focused icon tile should keep the ring');
+    assert(html.includes('object-fit:contain'), 'focused icon tile should use contain');
+  });
+  await check('applyRealArt sets artIsIcon, keeps the gradient hero, and passes exePath', async () => {
+    const bgBefore = 'data:image/svg+xml;placeholder';
+    GAMES = [{ key: 'scan-7', row: 'Hollow Knight', source: 'scan', scanId: 7, exePath: 'C:\\Games\\Hollow Knight\\Hollow Knight.exe', artIsIcon: false, img: 'data:image/svg+xml;tile', bg: bgBefore }];
+    sel = 0;
+    tileEls = [makeEl('store'), makeEl('tile0')];
+    mockArt = { tile_data_uri: 'data:image/png;base64,AAA', tile_path: 'C:\\art\\scan-7-icon.png', hero_path: null, hero_data_uri: null, capsule_path: 'C:\\art\\scan-7-icon.png', is_icon: true };
+    invokeLog.length = 0;
+    renderCalls = 0;
+    const ci = getEl('cardImg');
+    ci.src = '';
+    ci.style.objectFit = 'cover';
+    ci.parentElement.style.background = '';
+    applyRealArt();
+    await sleep(50);
+    const call = invokeLog.find((c) => c.cmd === 'get_game_art');
+    assert(call, 'missing get_game_art call');
+    assert.strictEqual(call.args.exePath, 'C:\\Games\\Hollow Knight\\Hollow Knight.exe', 'exePath should be passed, got: ' + JSON.stringify(call.args));
+    assert.strictEqual(GAMES[0].artIsIcon, true, 'artIsIcon should be set');
+    assert.strictEqual(GAMES[0].img, 'data:image/png;base64,AAA', 'tile should be the icon data URI');
+    assert.strictEqual(GAMES[0].bg, bgBefore, 'hero must stay the gradient placeholder for icon games');
+    assert(tileEls[1].innerHTML.includes('object-fit:contain'), 'tile should re-render centered: ' + tileEls[1].innerHTML);
+    assert.strictEqual(ci.src, 'data:image/png;base64,AAA', 'card image should be the icon');
+    assert.strictEqual(ci.style.objectFit, 'contain', 'card image should use contain');
+    assert(ci.parentElement.style.background.includes('#8B20FF'), 'card should sit on the gradient: ' + ci.parentElement.style.background);
+    assert.strictEqual(renderCalls, 0, 'no render for icon games (no hero to apply)');
+  });
+  await check('applyRealArt still sets the hero for real cover art', async () => {
+    GAMES = [{ key: 'scan-7', row: 'Hollow Knight', source: 'scan', scanId: 7, exePath: 'C:\\Games\\Hollow Knight\\Hollow Knight.exe', artIsIcon: false, img: 'data:image/svg+xml;tile', bg: 'data:image/svg+xml;placeholder' }];
+    sel = 0;
+    tileEls = [makeEl('store'), makeEl('tile0')];
+    bgSlides = [makeEl('slide0')];
+    mockArt = { tile_data_uri: 'data:image/jpeg;base64,BBB', tile_path: 'C:\\art\\scan-7-header.jpg', hero_path: 'C:\\art\\scan-7-hero.jpg', hero_data_uri: null, capsule_path: 'C:\\art\\scan-7-capsule.jpg', is_icon: false };
+    renderCalls = 0;
+    applyRealArt();
+    await sleep(50);
+    assert.strictEqual(GAMES[0].artIsIcon, false, 'artIsIcon should stay false for real art');
+    assert.strictEqual(GAMES[0].bg, 'asset://localhost/C:/art/scan-7-hero.jpg', 'hero should be set from hero_path, got: ' + GAMES[0].bg);
+    assert.strictEqual(renderCalls, 1, 'render should run when the hero arrives');
+    assert(tileEls[1].innerHTML.includes('object-fit:cover'), 'tile should stay full-bleed: ' + tileEls[1].innerHTML);
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

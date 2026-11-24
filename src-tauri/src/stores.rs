@@ -59,6 +59,10 @@ pub struct UnifiedGame {
     /// Scanned games only: a keyless art lookup failed for this game
     /// (Steam and GOG both missed) — the ••• menu offers Retry Art.
     pub art_failed: bool,
+    /// Scanned games only: the tile is the game's own .exe icon
+    /// (v0.2.6) — the frontend renders it centered on the Sonic
+    /// gradient card instead of stretched full-bleed.
+    pub art_is_icon: bool,
 }
 
 /// One exe found by the generic folder scan.
@@ -1378,6 +1382,7 @@ pub fn list_all_games(app: &AppHandle) -> Vec<UnifiedGame> {
                 pick_source: None,
                 has_override: false,
                 art_failed: false,
+                art_is_icon: false,
             });
         }
     }
@@ -1398,6 +1403,7 @@ pub fn list_all_games(app: &AppHandle) -> Vec<UnifiedGame> {
                     pick_source: None,
                     has_override: false,
                     art_failed: false,
+                    art_is_icon: false,
                 });
             }
         }
@@ -1420,6 +1426,7 @@ pub fn list_all_games(app: &AppHandle) -> Vec<UnifiedGame> {
             pick_source: None,
             has_override: false,
             art_failed: false,
+            art_is_icon: false,
         });
     }
 
@@ -1440,6 +1447,7 @@ pub fn list_all_games(app: &AppHandle) -> Vec<UnifiedGame> {
                     pick_source: Some(s.pick_source),
                     has_override: s.exe_override.is_some(),
                     art_failed: s.art_lookup_failed_at.is_some(),
+                    art_is_icon: s.art_source.as_deref() == Some("icon"),
                 });
             }
         }

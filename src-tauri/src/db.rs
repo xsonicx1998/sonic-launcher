@@ -401,9 +401,10 @@ pub struct ScannedGame {
     /// clicks Retry Art.
     pub art_lookup_failed_at: Option<i64>,
     /// Where the game's art came from: "steam" (store search hit),
-    /// "gog" (GOG Catalog hit), "manual" (user-picked cover, AppID,
-    /// or image URL). `None` = not resolved yet. A manual cover is
-    /// never overwritten by an automatic lookup.
+    /// "gog" (GOG Catalog hit), "icon" (the game's own .exe icon,
+    /// v0.2.6), "manual" (user-picked cover, AppID, or image URL).
+    /// `None` = not resolved yet. A manual cover is never
+    /// overwritten by an automatic lookup.
     pub art_source: Option<String>,
 }
 
@@ -634,8 +635,9 @@ pub fn set_art_resolved(app: &AppHandle, id: i64, appid: u32, source: &str) -> R
 }
 
 /// Record where a game's art came from without a Steam appid: "gog"
-/// for a GOG Catalog hit, "manual" for a user-picked cover or image
-/// URL. A manual marker is never overwritten by an automatic lookup
+/// for a GOG Catalog hit, "icon" for an extracted .exe icon
+/// (v0.2.6), "manual" for a user-picked cover or image URL. A
+/// manual marker is never overwritten by an automatic lookup
 /// (see art.rs).
 pub fn set_art_source(app: &AppHandle, id: i64, source: &str) -> Result<(), String> {
     let conn = open(app)?;

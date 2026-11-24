@@ -142,10 +142,21 @@ var GAMES = [{"key": "astro", "name": "ASTRO\u2019S PLAYROOM", "row": "Astro\u20
 var sel = -1;
 var tileEls = [];
 function tilePlainHTML(g){
+  if(g.artIsIcon){ return tileIconHTML(g, false); }
   return '<div style="position:relative;width:100%;height:100%;border-radius:inherit;overflow:hidden"><img src="'+escHtml(g.img)+'" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block"></div>';
 }
 function tileFocusedHTML(g){
+  if(g.artIsIcon){ return tileIconHTML(g, true); }
   return '<div class="ps5-focus-ring"></div><div style="position:relative;width:100%;height:100%;border-radius:inherit;overflow:hidden"><img src="'+escHtml(g.img)+'" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block;animation:iconPulse 5.5s ease-in-out infinite"><div style="position:absolute;inset:-25%;background:linear-gradient(135deg,rgba(140,210,255,0) 32%,rgba(190,225,255,.55) 50%,rgba(140,210,255,0) 68%);animation:diagSweep 5.5s ease-in-out infinite;pointer-events:none"></div></div>';
+}
+/* v0.2.6: an .exe-icon tile renders the icon centered on the Sonic
+   gradient at ~62% of the tile — never stretched full-bleed like a
+   real cover. */
+function tileIconHTML(g, focused){
+  var img = '<img src="'+escHtml(g.img)+'" style="width:62%;height:62%;object-fit:contain;display:block'+(focused ? ';animation:iconPulse 5.5s ease-in-out infinite' : '')+'">';
+  var sweep = focused ? '<div style="position:absolute;inset:-25%;background:linear-gradient(135deg,rgba(140,210,255,0) 32%,rgba(190,225,255,.55) 50%,rgba(140,210,255,0) 68%);animation:diagSweep 5.5s ease-in-out infinite;pointer-events:none"></div>' : '';
+  var inner = '<div style="position:relative;width:100%;height:100%;border-radius:inherit;overflow:hidden;background:linear-gradient(135deg,#8B20FF,#00C8FF,#F02DCD);display:flex;align-items:center;justify-content:center">'+img+sweep+'</div>';
+  return focused ? '<div class="ps5-focus-ring"></div>'+inner : inner;
 }
 function buildRow(){
   var row = document.getElementById('row');
@@ -239,7 +250,12 @@ function render(){
   document.getElementById('gameTag').textContent = g.tag;
   document.getElementById('gameMeta').textContent = g.meta;
   document.getElementById('gameStats').textContent = g.hours + '  •  Last played ' + g.last;
-  document.getElementById('cardImg').src = g.img;
+  var cardImgEl = document.getElementById('cardImg');
+  cardImgEl.src = g.img;
+  /* v0.2.6: an .exe icon sits centered (contain) on the gradient;
+     real covers fill the card (cover). */
+  cardImgEl.style.objectFit = g.artIsIcon ? 'contain' : 'cover';
+  if(cardImgEl.parentElement){ cardImgEl.parentElement.style.background = g.artIsIcon ? 'linear-gradient(135deg,#8B20FF,#00C8FF,#F02DCD)' : ''; }
   document.getElementById('cardPrice').textContent = g.price;
   document.getElementById('trophyP').textContent = g.trophyp;
   document.getElementById('trophyE').textContent = g.trophye;
@@ -415,6 +431,7 @@ function mapUnifiedGame(u){
   g.folder = u.folder || null; g.confidence = u.confidence || null;
   g.pickSource = u.pick_source || null; g.hasOverride = !!u.has_override;
   g.artFailed = !!u.art_failed;
+  g.artIsIcon = !!u.art_is_icon;
   if(u.source === 'manual' && u.key){
     var parts = String(u.key).split('-');
     g.manualId = parseInt(parts[parts.length - 1], 10) || null;
@@ -600,17 +617,20 @@ function applyRealArt(){
   if(!core){ return; }
   GAMES.forEach(function(g, i){
     if(!g.source || g.source === 'demo'){ return; }
-    core.invoke('get_game_art', { gameKey: g.key, appid: g.appid || null, name: g.row }).then(function(art){
+    core.invoke('get_game_art', { gameKey: g.key, appid: g.appid || null, name: g.row, exePath: g.exePath || null }).then(function(art){
       if(!art){ return; }
       var tileUrl = art.tile_data_uri || ((core.convertFileSrc && art.tile_path) ? core.convertFileSrc(art.tile_path) : null);
       var heroUrl = (core.convertFileSrc && art.hero_path) ? core.convertFileSrc(art.hero_path) : (art.hero_data_uri || null);
       if(tileUrl){
         g.img = tileUrl;
+        /* v0.2.6: an .exe icon keeps the gradient hero — never
+           stretched full-bleed as a background. */
+        if(art.is_icon){ g.artIsIcon = true; }
         var el = tileEls[i+1];
         if(el){ el.innerHTML = (i === sel) ? tileFocusedHTML(g) : tilePlainHTML(g); }
-        if(i === sel){ var ci = document.getElementById('cardImg'); if(ci){ ci.src = tileUrl; } }
+        if(i === sel){ var ci = document.getElementById('cardImg'); if(ci){ ci.src = tileUrl; ci.style.objectFit = g.artIsIcon ? 'contain' : 'cover'; if(ci.parentElement){ ci.parentElement.style.background = g.artIsIcon ? 'linear-gradient(135deg,#8B20FF,#00C8FF,#F02DCD)' : ''; } } }
       }
-      if(heroUrl){
+      if(heroUrl && !art.is_icon){
         g.bg = heroUrl;
         var slide = bgSlides[i];
         if(slide){

@@ -1173,7 +1173,7 @@ pub fn set_cover_art_appid(app: &AppHandle, game_key: &str, appid: u32) -> Resul
 pub fn set_cover_art_url(app: &AppHandle, game_key: &str, url: &str) -> Result<(), String> {
     let url = url.trim();
     validate_image_url(url)?;
-    let bytes = match crate::http::get_capped(url, 30, MAX_ART_BYTES) {
+    let bytes = match crate::http::get_capped(url, 8, MAX_ART_BYTES) {
         crate::http::CappedGet::Ok(b) => b,
         crate::http::CappedGet::RateLimited => {
             return Err("the image host refused the download (429/403)".to_string());
@@ -1215,6 +1215,39 @@ pub fn retry_art(app: &AppHandle, game_key: &str, name: &str) -> Result<String, 
         ArtResolve::Manual => "This game has a manual cover".to_string(),
         ArtResolve::NotScanned => "Retry Art is only for scanned games".to_string(),
     })
+}
+
+/// Clear Art / Music Cache (v0.2.11, Settings → About): delete every
+/// cached cover/logo file (including `*-logo.miss` markers, which
+/// live in the art dir) and every cached theme file, forget all art
+/// decisions and all music choices in the DB. The next lookup /
+/// download starts fresh. Returns a short summary for the toast.
+pub fn clear_art_music_cache(app: &AppHandle) -> Result<String, String> {
+    let mut art_files = 0;
+    if let Ok(dir) = art_dir(app) {
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                if std::fs::remove_file(entry.path()).is_ok() {
+                    art_files += 1;
+                }
+            }
+        }
+    }
+    let mut music_files = 0;
+    if let Ok(dir) = crate::music::music_dir(app) {
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                if std::fs::remove_file(entry.path()).is_ok() {
+                    music_files += 1;
+                }
+            }
+        }
+    }
+    db::clear_all_art_cache(app)?;
+    db::clear_all_music(app)?;
+    Ok(format!(
+        "Cleared {art_files} art files and {music_files} music files"
+    ))
 }
 
 #[cfg(test)]

@@ -1,6 +1,6 @@
 //! Managed game sessions (v0.2.9): destroy the window on launch.
 //!
-//! When the "Minimize launcher when a game starts" setting is ON, the
+//! When the "Close UI to tray while gaming (saves RAM)" setting is ON, the
 //! launcher window is DESTROYED when a game launches — not just hidden.
 //! A hidden WebView2 window still costs ~150-195 MB of RAM and a live
 //! renderer process; destroying it leaves only the ~4 MB Rust host in
@@ -20,20 +20,41 @@
 //!   window already exists it is simply shown and focused.
 //!
 //! Toggle semantics (documented decision): the setting keeps its key
-//! (`minimize_on_launch`) and its label ("Minimize launcher when a
-//! game starts"). ON now means "the launcher window closes entirely
+//! (`minimize_on_launch`) and its label ("Close UI to tray while
+//! gaming (saves RAM)"). ON now means "the launcher window closes
 //! while a game runs" instead of "hides": from the user's point of
 //! view the window still disappears when a game starts and comes back
 //! when it exits — it is just lighter while gone. OFF keeps the
 //! window open and the old frontend polls keep working.
 
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
 use crate::db;
 use crate::playtime;
 use crate::steam;
+
+/// Whether a game is currently running (v0.2.11). Set when a launch
+/// starts (managed path here, or the `start_playtime_session` command
+/// for the window-stays-open path) and cleared when the game exits.
+/// The run callback uses it to tell a real quit apart from the
+/// window lifecycle: Alt+F4 / window close quits when NO game is
+/// running, but while a game runs the v0.2.10 behaviour holds — the
+/// exit is prevented, the ~4 MB host stays in the tray, and the
+/// window is recreated on game exit.
+static GAME_RUNNING: AtomicBool = AtomicBool::new(false);
+
+/// Mark a game as running (launch) or not (game exit).
+pub fn set_game_running(running: bool) {
+    GAME_RUNNING.store(running, Ordering::SeqCst);
+}
+
+/// Whether a game is currently running.
+pub fn is_game_running() -> bool {
+    GAME_RUNNING.load(Ordering::SeqCst)
+}
 
 /// Which side of the v0.2.9 window lifecycle the launcher is in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -125,8 +146,14 @@ pub fn destroy_launcher_window(app: &AppHandle) {
 /// notice). `code: Some(_)` comes from an explicit
 /// `AppHandle::exit` / `restart` (e.g. the tray "Quit" item) and
 /// must be allowed through, or the app could never quit.
-pub fn should_prevent_exit(exit_code: Option<i32>) -> bool {
-    exit_code.is_none()
+///
+/// v0.2.11 — Alt+F4 / closing the window quits when NO game is
+/// running (the window is borderless, so this is the only visible
+/// way out besides the tray / Settings / Power menu). While a game
+/// IS running the exit is still prevented: the host must stay alive
+/// in the tray to recreate the window on game exit.
+pub fn should_prevent_exit(exit_code: Option<i32>, game_running: bool) -> bool {
+    exit_code.is_none() && game_running
 }
 
 /// Start a managed game session: start the playtime session, spawn
@@ -176,10 +203,17 @@ pub fn begin_managed_launch(
         if let Some(id) = session_id {
             let _ = db::end_playtime_session(&watcher_app, id);
         }
-        // The window may already exist again (e.g. the user clicked
-        // the tray icon mid-game) — then this just shows it.
+        // The game is gone: clear the flag BEFORE recreating, so a
+        // window close from here on is a real quit, not a lifecycle
+        // exit. The window may already exist again (e.g. the user
+        // clicked the tray icon mid-game) — then this just shows it.
+        set_game_running(false);
         let _ = show_or_recreate_window(&watcher_app);
     });
+    // The game is starting: the window destroy below must NOT end the
+    // process — the run callback prevents the exit while this flag
+    // is set (see should_prevent_exit).
+    set_game_running(true);
     destroy_launcher_window(app);
     Ok(())
 }
@@ -204,13 +238,19 @@ mod tests {
     }
 
     #[test]
-    fn exit_request_prevented_only_for_window_lifecycle_exits() {
-        // code None: the last window was destroyed / user interaction
-        // — the host must stay alive in the tray.
-        assert!(should_prevent_exit(None));
-        // code Some: an explicit exit/restart (tray "Quit") — the
-        // app must be allowed to end, or it could never quit.
-        assert!(!should_prevent_exit(Some(0)));
-        assert!(!should_prevent_exit(Some(1)));
+    fn exit_request_prevented_only_while_a_game_runs() {
+        // code None + game running: the last window was destroyed by
+        // the managed launch — the host must stay alive in the tray.
+        assert!(should_prevent_exit(None, true));
+        // code None + NO game running: Alt+F4 / window close — a real
+        // quit (v0.2.11), the window is borderless so this is the
+        // only visible way out besides tray / Settings / Power.
+        assert!(!should_prevent_exit(None, false));
+        // code Some: an explicit exit/restart (tray "Quit", the
+        // Settings / Power "Exit Launcher") — the app must be allowed
+        // to end, or it could never quit.
+        assert!(!should_prevent_exit(Some(0), true));
+        assert!(!should_prevent_exit(Some(0), false));
+        assert!(!should_prevent_exit(Some(1), true));
     }
 }

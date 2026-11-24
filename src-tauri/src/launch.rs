@@ -126,12 +126,25 @@ fn launch_exe(
     // Detached spawn: the child keeps running after the launcher exits,
     // and the launcher never blocks on it.
     let mut cmd = Command::new(path);
+    // Run the game with its own folder as the working directory: many
+    // games resolve data files by relative path and crash when launched
+    // from the launcher's directory — then get blamed as "the wrong
+    // exe". A bare filename has no parent (empty), so no current_dir
+    // is set in that case.
+    if let Some(parent) = Path::new(path).parent() {
+        if !parent.as_os_str().is_empty() {
+            cmd.current_dir(parent);
+        }
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         // DETACHED_PROCESS (0x8) + CREATE_NEW_PROCESS_GROUP (0x200):
         // the game survives the launcher and gets its own console group.
-        cmd.creation_flags(0x8 | 0x200);
+        // CREATE_NO_WINDOW (0x08000000): a console-subsystem exe must
+        // never flash a console window on launch either (audit: this
+        // and music.rs run_ytdlp are the only Command::new sites).
+        cmd.creation_flags(0x8 | 0x200 | 0x08000000);
     }
     let mut child = cmd
         .spawn()

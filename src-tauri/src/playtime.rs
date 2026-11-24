@@ -20,10 +20,24 @@ pub fn end_session(app: &AppHandle, session_id: i64) -> Result<(), String> {
     db::end_playtime_session(app, session_id)
 }
 
+/// Close play sessions left open by a previous run (tray quit or crash
+/// mid-game). Stale sessions credit zero minutes — see
+/// db::close_stale_playtime_sessions. Returns how many were closed.
+pub fn close_stale_sessions(app: &AppHandle) -> Result<i64, String> {
+    db::close_stale_playtime_sessions(app)
+}
+
 /// Total tracked minutes for one game (finished sessions + open session
 /// elapsed time so far).
 pub fn get_playtime(app: &AppHandle, game_key: &str) -> Result<i64, String> {
     db::playtime_total_minutes(app, game_key)
+}
+
+/// Unix time of the last finished play session for a game, or 0 when
+/// never played (v0.2.11 — the hero "Last played ..." line only shows
+/// when this is non-zero).
+pub fn get_last_played(app: &AppHandle, game_key: &str) -> i64 {
+    db::last_played_unix(app, game_key).unwrap_or(0)
 }
 
 /// Per-game playtime totals, most-played first.

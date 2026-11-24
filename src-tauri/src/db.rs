@@ -295,6 +295,14 @@ pub fn delete_music(app: &AppHandle, game_key: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Forget every theme-music choice (Clear Art / Music Cache, v0.2.11).
+pub fn clear_all_music(app: &AppHandle) -> Result<(), String> {
+    let conn = open(app)?;
+    conn.execute("DELETE FROM music", [])
+        .map_err(|e| format!("cannot clear music cache: {e}"))?;
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Playtime (Phase 5) — one row per launch session.
 // ---------------------------------------------------------------------------
@@ -329,6 +337,24 @@ pub fn end_playtime_session(app: &AppHandle, session_id: i64) -> Result<(), Stri
     Ok(())
 }
 
+/// Close any play sessions left open by a previous run (the launcher
+/// was closed from the tray or crashed while a game was running).
+/// A stale session credits NO time — ended_at = started_at, minutes
+/// = 0 — because its real end is unknown: crediting "until now"
+/// would invent playtime that never happened, and the still-open
+/// row otherwise keeps growing against the current time in
+/// playtime_total_minutes. Returns how many sessions were closed.
+pub fn close_stale_playtime_sessions(app: &AppHandle) -> Result<i64, String> {
+    let conn = open(app)?;
+    let closed = conn
+        .execute(
+            "UPDATE playtime SET ended_at = started_at, minutes = 0 WHERE ended_at IS NULL",
+            [],
+        )
+        .map_err(|e| format!("cannot close stale playtime sessions: {e}"))?;
+    Ok(closed as i64)
+}
+
 /// Total tracked minutes for one game, including a still-open session's
 /// elapsed time so far.
 pub fn playtime_total_minutes(app: &AppHandle, game_key: &str) -> Result<i64, String> {
@@ -352,6 +378,21 @@ pub struct PlaytimeTotal {
     pub game_name: String,
     pub total_minutes: i64,
     pub sessions: i64,
+}
+
+/// Unix time of the last finished play session for a game, or 0 when
+/// the game was never played. The hero "Last played ..." line only
+/// shows when this is non-zero (v0.2.11 — no more "—" placeholders).
+pub fn last_played_unix(app: &AppHandle, game_key: &str) -> Result<i64, String> {
+    let conn = open(app)?;
+    let last: i64 = conn
+        .query_row(
+            "SELECT COALESCE(MAX(ended_at), 0) FROM playtime WHERE game_key = ?1 AND ended_at IS NOT NULL",
+            params![game_key],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("cannot read last played: {e}"))?;
+    Ok(last)
 }
 
 pub fn list_playtime_totals(app: &AppHandle) -> Result<Vec<PlaytimeTotal>, String> {
@@ -690,6 +731,20 @@ pub fn clear_art_lookup_failed(app: &AppHandle, id: i64) -> Result<(), String> {
     if changed == 0 {
         return Err(format!("no scanned game with id {id}"));
     }
+    Ok(())
+}
+
+/// Forget every cached art decision (Clear Art / Music Cache,
+/// v0.2.11): resolved AppIDs, failure timestamps and art sources are
+/// all reset, so the next lookup starts fresh. Manual covers are
+/// files in the art dir — the caller deletes those too.
+pub fn clear_all_art_cache(app: &AppHandle) -> Result<(), String> {
+    let conn = open(app)?;
+    conn.execute(
+        "UPDATE scanned_games SET resolved_appid = NULL, art_lookup_failed_at = NULL, art_source = NULL",
+        [],
+    )
+    .map_err(|e| format!("cannot clear art cache: {e}"))?;
     Ok(())
 }
 

@@ -2,15 +2,14 @@
 <html>
 <head>
 <meta charset="utf-8">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Noto+Sans+Arabic:wght@400;500&display=swap" rel="stylesheet">
-<style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}@keyframes kenburns{from{transform:scale(1)}to{transform:scale(1.045)}}.bg-slide{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;z-index:0;pointer-events:none;will-change:opacity,transform}.bg-slide.is-active{animation:kenburns 24s ease-in-out alternate infinite;will-change:transform}.ccDockItem{position:relative;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background 180ms ease}.ccDockItem .ccDockIc{width:24px;height:24px;color:#fff;display:flex;align-items:center;justify-content:center;transition:color 180ms ease}.ccDockItem .ccDockIc svg{width:100%;height:100%}.ccDockItem:hover{background:#fff}.ccDockItem:hover .ccDockIc{color:#111}.ccDockItem::after{content:attr(data-label);position:absolute;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%) translateY(4px);font-size:11px;font-weight:500;letter-spacing:.02em;color:#fff;background:rgba(10,10,14,.72);border:1px solid rgba(255,255,255,.14);padding:5px 11px;border-radius:99px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity 180ms ease,transform 180ms ease}.ccDockItem:hover::after{opacity:1;transform:translateX(-50%) translateY(0)}#miniPill{opacity:.28;transition:opacity 200ms ease}#miniPill:hover{opacity:.95}@keyframes eq{0%,100%{height:5px}50%{height:14px}}.eq span{display:inline-block;width:3px;background:#fff;margin-right:2px;animation:eq 1s ease-in-out infinite}.eq span:nth-child(2){animation-delay:.2s}.eq span:nth-child(3){animation-delay:.4s}#toast{transition:opacity 1s}:root{--tile-sm:clamp(64px,5.2vw,108px);--tile-lg:clamp(104px,8.45vw,175px);--radius-sm:12px;--radius-lg:18px;--tile-gap:12px;--focus-margin:8px;--ps5-ease:cubic-bezier(.22,1,.36,1);--anchor-x:calc(var(--tile-sm) + var(--tile-gap) + var(--focus-margin))}.ps5-row-viewport{position:relative;height:calc(var(--tile-lg) + 24px);overflow:visible;padding-top:8px}.ps5-row-track{display:flex;align-items:flex-start;gap:var(--tile-gap);transition:transform 280ms var(--ps5-ease);will-change:transform}.game-tile{position:relative;flex:0 0 auto;width:var(--tile-sm);height:var(--tile-sm);border-radius:var(--radius-sm);filter:brightness(.86);opacity:.94;transition:width 260ms var(--ps5-ease),height 260ms var(--ps5-ease),margin 260ms var(--ps5-ease),border-radius 260ms var(--ps5-ease),filter 220ms ease,opacity 220ms ease}.game-tile.is-focused{width:var(--tile-lg);height:var(--tile-lg);border-radius:var(--radius-lg);margin-inline:var(--focus-margin);filter:brightness(1);opacity:1;z-index:2;box-shadow:0 12px 32px rgba(0,0,0,.45)}.focused-game-title{position:absolute;left:calc(var(--anchor-x) + var(--tile-lg) + var(--focus-margin) + var(--tile-gap));top:calc(var(--tile-sm) + 22px);font-size:clamp(18px,1.4vw,25px);font-weight:400;letter-spacing:.01em;color:rgba(255,255,255,.96);white-space:nowrap;pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)}@keyframes titleIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}.title-in{display:inline-block;animation:titleIn 180ms ease}.ps5-platform-badge{display:inline-block;font-size:11px;font-weight:500;border:1px solid rgba(255,255,255,.45);border-radius:4px;padding:1px 6px;opacity:.78;vertical-align:middle;letter-spacing:.02em;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)}.ps5-action-btn{position:relative;height:clamp(44px,3.4vw,54px);display:flex;align-items:center;justify-content:center;background:rgba(24,28,36,.58);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.12);transition:background 200ms ease,box-shadow 200ms ease}.ps5-action-btn:hover,.ps5-action-btn:focus-visible{background:rgba(70,78,96,.62);outline:none}.ps5-action-btn:hover::after,.ps5-action-btn:focus-visible::after{content:"";position:absolute;inset:-5px;border:2px solid rgba(255,255,255,.75);border-radius:inherit;box-shadow:0 0 18px rgba(255,255,255,.28);pointer-events:none;animation:ps5-breathe 2.6s ease-in-out infinite}@keyframes iconPulse{0%,100%{filter:brightness(1)}10%{filter:brightness(1.4)}18%{filter:brightness(1)}}@property --ps5-sweep-angle{syntax:"<angle>";initial-value:0deg;inherits:false}@keyframes ps5-sweep{from{--ps5-sweep-angle:0deg}to{--ps5-sweep-angle:360deg}}@keyframes ps5-breathe{0%{opacity:.18}50%{opacity:1}100%{opacity:.18}}@keyframes ps5-ring-enter{0%{opacity:0;transform:scale(.96)}100%{opacity:1;transform:scale(1)}}.ps5-focus-ring{position:absolute;inset:-6px;border-radius:calc(var(--radius-lg) + 6px);pointer-events:none;animation:ps5-ring-enter 220ms cubic-bezier(.22,1,.36,1) forwards}.ps5-focus-ring::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:2px;background:conic-gradient(from var(--ps5-sweep-angle),rgba(255,255,255,.65) 0deg,rgba(255,255,255,1) 45deg,rgba(220,238,255,.7) 95deg,rgba(255,255,255,.6) 150deg,rgba(255,255,255,.65) 180deg,rgba(255,255,255,.95) 225deg,rgba(220,238,255,.7) 275deg,rgba(255,255,255,.6) 330deg,rgba(255,255,255,.65) 360deg);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);mask-composite:exclude;animation:ps5-breathe 2.6s ease-in-out infinite,ps5-sweep 4.5s linear infinite}.ps5-focus-ring::after{content:"";position:absolute;inset:-1px;border-radius:inherit;padding:3px;background:conic-gradient(from var(--ps5-sweep-angle),rgba(255,255,255,.08) 0deg,rgba(255,255,255,.35) 45deg,rgba(200,230,255,.12) 110deg,rgba(255,255,255,.08) 180deg,rgba(255,255,255,.3) 225deg,rgba(200,230,255,.12) 290deg,rgba(255,255,255,.08) 360deg);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);mask-composite:exclude;filter:blur(5px);animation:ps5-breathe 2.6s ease-in-out infinite,ps5-sweep 4.5s linear infinite}@keyframes diagSweep{0%{transform:translate(-38%,-38%);opacity:0}4%{opacity:1}14%{transform:translate(38%,38%);opacity:1}18%,100%{transform:translate(38%,38%);opacity:0}}body.game-running *,body.game-running *::before,body.game-running *::after{animation-play-state:paused !important}body.page-hidden *,body.page-hidden *::before,body.page-hidden *::after{animation-play-state:paused !important}</style>
+<style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}@keyframes kenburns{from{transform:scale(1)}to{transform:scale(1.045)}}.bg-slide{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;z-index:0;pointer-events:none;will-change:opacity,transform}.bg-slide.is-active{animation:kenburns 24s ease-in-out alternate infinite;will-change:transform}.ccDockItem{position:relative;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background 180ms ease}.ccDockItem .ccDockIc{width:24px;height:24px;color:#fff;display:flex;align-items:center;justify-content:center;transition:color 180ms ease}.ccDockItem .ccDockIc svg{width:100%;height:100%}.ccDockItem:hover{background:#fff}.ccDockItem:hover .ccDockIc{color:#111}.ccDockItem::after{content:attr(data-label);position:absolute;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%) translateY(4px);font-size:11px;font-weight:600;letter-spacing:.02em;color:#fff;background:rgba(10,10,14,.72);border:1px solid rgba(255,255,255,.14);padding:5px 11px;border-radius:99px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity 180ms ease,transform 180ms ease}.ccDockItem:hover::after{opacity:1;transform:translateX(-50%) translateY(0)}#miniPill{opacity:.28;transition:opacity 200ms ease}#miniPill:hover{opacity:.95}@keyframes eq{0%,100%{height:5px}50%{height:14px}}.eq span{display:inline-block;width:3px;background:#fff;margin-right:2px;animation:eq 1s ease-in-out infinite}.eq span:nth-child(2){animation-delay:.2s}.eq span:nth-child(3){animation-delay:.4s}#toast{transition:opacity 1s}:root{--tile-sm:clamp(64px,5.2vw,108px);--tile-lg:clamp(104px,8.45vw,175px);--radius-sm:12px;--radius-lg:18px;--tile-gap:12px;--focus-margin:8px;--ps5-ease:cubic-bezier(.22,1,.36,1);--anchor-x:calc(var(--tile-sm) + var(--tile-gap) + var(--focus-margin))}.ps5-row-viewport{position:relative;height:calc(var(--tile-lg) + 24px);overflow:visible;padding-top:8px}.ps5-row-track{display:flex;align-items:flex-start;gap:var(--tile-gap);transition:transform 280ms var(--ps5-ease);will-change:transform}.game-tile{position:relative;flex:0 0 auto;width:var(--tile-sm);height:var(--tile-sm);border-radius:var(--radius-sm);filter:brightness(.86);opacity:.94;transition:width 260ms var(--ps5-ease),height 260ms var(--ps5-ease),margin 260ms var(--ps5-ease),border-radius 260ms var(--ps5-ease),filter 220ms ease,opacity 220ms ease}.game-tile.is-focused{width:var(--tile-lg);height:var(--tile-lg);border-radius:var(--radius-lg);margin-inline:var(--focus-margin);filter:brightness(1);opacity:1;z-index:2;box-shadow:0 12px 32px rgba(0,0,0,.45)}.focused-game-title{position:absolute;left:calc(var(--anchor-x) + var(--tile-lg) + var(--focus-margin) + var(--tile-gap));top:calc(var(--tile-sm) + 22px);font-size:clamp(18px,1.4vw,25px);font-weight:400;letter-spacing:.01em;color:rgba(255,255,255,.96);white-space:nowrap;pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)}@keyframes titleIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}.title-in{display:inline-block;animation:titleIn 180ms ease}.ps5-platform-badge{display:inline-block;font-size:11px;font-weight:600;border:1px solid rgba(255,255,255,.45);border-radius:4px;padding:1px 6px;opacity:.78;vertical-align:middle;letter-spacing:.02em;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)}.ps5-action-btn{position:relative;height:clamp(44px,3.4vw,54px);display:flex;align-items:center;justify-content:center;background:rgba(24,28,36,.58);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.12);transition:background 200ms ease,box-shadow 200ms ease}.ps5-action-btn:hover,.ps5-action-btn:focus-visible{background:rgba(70,78,96,.62);outline:none}.ps5-action-btn:hover::after,.ps5-action-btn:focus-visible::after{content:"";position:absolute;inset:-5px;border:2px solid rgba(255,255,255,.75);border-radius:inherit;box-shadow:0 0 18px rgba(255,255,255,.28);pointer-events:none;animation:ps5-breathe 2.6s ease-in-out infinite}@keyframes iconPulse{0%,100%{filter:brightness(1)}10%{filter:brightness(1.4)}18%{filter:brightness(1)}}@property --ps5-sweep-angle{syntax:"<angle>";initial-value:0deg;inherits:false}@keyframes ps5-sweep{from{--ps5-sweep-angle:0deg}to{--ps5-sweep-angle:360deg}}@keyframes ps5-breathe{0%{opacity:.18}50%{opacity:1}100%{opacity:.18}}@keyframes ps5-ring-enter{0%{opacity:0;transform:scale(.96)}100%{opacity:1;transform:scale(1)}}.ps5-focus-ring{position:absolute;inset:-6px;border-radius:calc(var(--radius-lg) + 6px);pointer-events:none;animation:ps5-ring-enter 220ms cubic-bezier(.22,1,.36,1) forwards}.ps5-focus-ring::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:2px;background:conic-gradient(from var(--ps5-sweep-angle),rgba(255,255,255,.65) 0deg,rgba(255,255,255,1) 45deg,rgba(220,238,255,.7) 95deg,rgba(255,255,255,.6) 150deg,rgba(255,255,255,.65) 180deg,rgba(255,255,255,.95) 225deg,rgba(220,238,255,.7) 275deg,rgba(255,255,255,.6) 330deg,rgba(255,255,255,.65) 360deg);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);mask-composite:exclude;animation:ps5-breathe 2.6s ease-in-out infinite,ps5-sweep 4.5s linear infinite}.ps5-focus-ring::after{content:"";position:absolute;inset:-1px;border-radius:inherit;padding:3px;background:conic-gradient(from var(--ps5-sweep-angle),rgba(255,255,255,.08) 0deg,rgba(255,255,255,.35) 45deg,rgba(200,230,255,.12) 110deg,rgba(255,255,255,.08) 180deg,rgba(255,255,255,.3) 225deg,rgba(200,230,255,.12) 290deg,rgba(255,255,255,.08) 360deg);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);mask-composite:exclude;filter:blur(5px);animation:ps5-breathe 2.6s ease-in-out infinite,ps5-sweep 4.5s linear infinite}@keyframes diagSweep{0%{transform:translate(-38%,-38%);opacity:0}4%{opacity:1}14%{transform:translate(38%,38%);opacity:1}18%,100%{transform:translate(38%,38%);opacity:0}}body.game-running *,body.game-running *::before,body.game-running *::after{animation-play-state:paused !important}body.page-hidden *,body.page-hidden *::before,body.page-hidden *::after{animation-play-state:paused !important}/* v0.2.11 "Reduce Animations / Performance Mode": kills every continuous animation (kenburns, focus-ring sweep/breathe, icon pulse, EQ bars, boot particles) and every backdrop-filter blur — the two biggest costs of the software-rendered UI on a no-GPU server over RDP. One-shot entrance animations also stop (elements just show their final state). */body.reduce-animations *,body.reduce-animations *::before,body.reduce-animations *::after{animation:none !important}body.reduce-animations *{backdrop-filter:none !important}</style>
 </head>
 <body>
-<div style="box-sizing:border-box;font-family:'Inter','Noto Sans Arabic','Segoe UI Variable','Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;width:100vw;height:100vh;max-width:none;margin:0;border-radius:0;overflow:hidden;background:#000;color:#fff;position:relative">
+<div style="box-sizing:border-box;font-family:'Segoe UI Variable Text','Segoe UI Variable','Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;width:100vw;height:100vh;max-width:none;margin:0;border-radius:0;overflow:hidden;background:#000;color:#fff;position:relative">
   <div id="boot" onclick="skipBoot()" style="position:absolute;inset:0;background:#000;z-index:30;display:flex;align-items:center;justify-content:center;cursor:pointer">
     <style>@keyframes rise{0%{transform:translateY(20px);opacity:0}20%{opacity:1}100%{transform:translateY(-100vh);opacity:0}}@keyframes bootSway{0%{transform:translateX(0)}50%{transform:translateX(7px)}100%{transform:translateX(0)}}@keyframes bootGlowPulse{0%,100%{opacity:.5}50%{opacity:.85}}</style>
     <div style="position:absolute;inset:0;background:radial-gradient(ellipse 60% 45% at 50% 55%,rgba(255,190,90,.14),rgba(255,190,90,0) 70%),radial-gradient(ellipse 45% 35% at 50% 45%,rgba(120,90,255,.10),rgba(120,90,255,0) 70%);animation:bootGlowPulse 2.4s ease-in-out infinite"></div>
-    <div id="bootLogo" style="position:relative;color:#fff;font-size:clamp(64px,9vw,120px);font-weight:800;letter-spacing:.14em;text-shadow:0 0 24px rgba(255,255,255,.55),0 0 64px rgba(160,120,255,.35)">SONIC</div>
+    <div id="bootLogo" style="position:relative;color:#fff;font-size:clamp(64px,9vw,120px);font-weight:600;letter-spacing:.14em;text-shadow:0 0 24px rgba(255,255,255,.55),0 0 64px rgba(160,120,255,.35)">SONIC</div>
     <div id="bootParticles" style="position:absolute;inset:0;overflow:hidden"></div>
   </div>
   <style>
@@ -40,14 +39,14 @@
   <div id="fastExitNotice" style="display:none;position:absolute;top:64px;right:clamp(28px,3.6vw,64px);width:380px;max-width:80vw;background:rgba(20,22,32,.97);border:1px solid rgba(139,32,255,.55);border-radius:12px;padding:14px 16px;box-shadow:0 12px 40px rgba(0,0,0,.6),0 0 0 1px rgba(0,200,255,.15);z-index:9;font-size:14px;color:rgba(255,255,255,.92)">
     <div id="fastExitText" style="line-height:1.45"></div>
     <div style="display:flex;gap:8px;margin-top:12px">
-      <div onclick="fastExitChangeExe()" style="flex:1;text-align:center;padding:9px 10px;border-radius:8px;cursor:pointer;background:linear-gradient(135deg,#8B20FF,#00C8FF);font-weight:500">Change launch file</div>
+      <div onclick="fastExitChangeExe()" style="flex:1;text-align:center;padding:9px 10px;border-radius:8px;cursor:pointer;background:linear-gradient(135deg,#8B20FF,#00C8FF);font-weight:600">Change launch file</div>
       <div onclick="hideFastExitNotice()" style="padding:9px 14px;border-radius:8px;cursor:pointer;background:rgba(255,255,255,.07)">Dismiss</div>
     </div>
   </div>
   <div id="topBar" style="position:relative;z-index:2;padding:clamp(22px,2.4vw,38px) clamp(28px,3.6vw,64px) 0;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)">
     <div style="display:flex;align-items:center">
-      <span style="font-size:clamp(18px,1.35vw,24px);font-weight:500;color:rgba(255,255,255,.98)">Games</span><span style="font-size:clamp(18px,1.35vw,24px);font-weight:300;color:rgba(255,255,255,.52);margin-left:32px">Media</span>
-      <span style="margin-left:auto;display:flex;align-items:center;gap:20px;font-size:16px;color:rgba(255,255,255,.92)"><span style="position:relative;cursor:pointer" onclick="showLbl('lblSearch');openSearch()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg><span id="lblSearch" style="display:none;position:absolute;top:28px;left:50%;transform:translateX(-50%);font-size:11px;white-space:nowrap">Search</span></span><span style="position:relative;cursor:pointer" onclick="showLbl('lblSettings');openSettings()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span id="lblSettings" style="display:none;position:absolute;top:28px;left:50%;transform:translateX(-50%);font-size:11px;white-space:nowrap">Settings</span></span><span style="position:relative;width:26px;height:26px;display:inline-flex;flex:none"><span style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#8B20FF,#00C8FF);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:500">M</span><span style="position:absolute;right:-1px;bottom:-1px;width:8px;height:8px;border-radius:50%;background:#2fd45a;border:1.5px solid rgba(0,0,0,.55)"></span></span><span id="clock" style="font-size:clamp(17px,1.25vw,22px);font-weight:300;letter-spacing:.02em;font-variant-numeric:tabular-nums">19:30</span></span>
+      <span style="font-size:clamp(18px,1.35vw,24px);font-weight:600;color:rgba(255,255,255,.98)">Games</span>
+      <span style="margin-left:auto;display:flex;align-items:center;gap:20px;font-size:16px;color:rgba(255,255,255,.92)"><span style="position:relative;cursor:pointer" onclick="showLbl('lblSearch');openSearch()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg><span id="lblSearch" style="display:none;position:absolute;top:28px;left:50%;transform:translateX(-50%);font-size:11px;white-space:nowrap">Search</span></span><span style="position:relative;cursor:pointer" onclick="showLbl('lblSettings');openSettings()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span id="lblSettings" style="display:none;position:absolute;top:28px;left:50%;transform:translateX(-50%);font-size:11px;white-space:nowrap">Settings</span></span><span style="position:relative;width:26px;height:26px;display:inline-flex;flex:none"><span style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#8B20FF,#00C8FF);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:600">M</span><span style="position:absolute;right:-1px;bottom:-1px;width:8px;height:8px;border-radius:50%;background:#2fd45a;border:1.5px solid rgba(0,0,0,.55)"></span></span><span id="clock" style="font-size:clamp(17px,1.25vw,22px);font-weight:300;letter-spacing:.02em;font-variant-numeric:tabular-nums">19:30</span><span style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-size:15px;font-weight:600" onclick="exitLauncher()" title="Exit Sonic Launcher"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M12 3v7"/><path d="M6.3 6.5a8 8 0 1 0 11.4 0"/></svg>Exit</span></span>
     </div>
     <div class="ps5-row-viewport" style="margin-top:14px"><div id="row" class="ps5-row-track"></div><div id="rowTitle" class="focused-game-title"></div></div>
   </div>
@@ -55,100 +54,89 @@
     <input id="searchInput" type="text" placeholder="Search games&hellip;" autocomplete="off" oninput="renderSearchResults(this.value)" onkeydown="if(event.key==='Enter'){var h=searchGameMatches(this.value);if(h.length){pickSearchResult(h[0]);}}" style="width:100%;box-sizing:border-box;padding:9px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.45);color:#fff;font-size:14px;outline:none">
     <div id="searchResults" style="margin-top:8px;max-height:300px;overflow-y:auto"></div>
   </div>
+  <div id="libraryGrid" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,.88);backdrop-filter:blur(12px);z-index:8;overflow-y:auto;padding:clamp(22px,2.4vw,38px) clamp(28px,3.6vw,64px)">
+    <div style="display:flex;align-items:center"><span style="font-size:clamp(18px,1.35vw,24px);font-weight:600">Library</span><span onclick="closeLibraryGrid()" style="margin-left:auto;cursor:pointer;font-size:15px;color:rgba(255,255,255,.8)">Close</span></div>
+    <div id="libraryGridItems" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:16px;margin-top:20px"></div>
+  </div>
+  <div id="heroScrim" style="position:absolute;z-index:1;left:0;bottom:0;width:clamp(520px,50vw,820px);height:clamp(240px,42vh,420px);background:linear-gradient(to top right,rgba(0,0,0,.75),transparent 60%);pointer-events:none"></div>
   <div id="heroBlock" style="position:absolute;z-index:2;left:clamp(28px,3.6vw,64px);bottom:clamp(48px,6.5vh,84px);max-width:clamp(470px,44vw,740px)">
-    <img id="gameLogoImg" alt="" style="display:none;max-height:120px;max-width:420px;object-fit:contain;filter:drop-shadow(0 2px 8px rgba(0,0,0,.6))">
-    <div id="gameLogo" style="font-size:clamp(34px,3.2vw,54px);font-weight:500;line-height:1.05;letter-spacing:.01em;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)"></div>
+    <img id="gameLogoImg" alt="" style="display:none;max-height:120px;max-width:420px;object-fit:contain;object-position:left bottom;margin-bottom:24px;filter:drop-shadow(0 2px 8px rgba(0,0,0,.6))">
+    <div id="gameLogo" style="font-family:'Segoe UI Variable Display','Segoe UI Light','Segoe UI',sans-serif;font-size:clamp(42px,3.2vw,52px);font-weight:300;line-height:1.08;letter-spacing:-0.02em;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)"></div>
     <div id="gameTag" style="font-size:clamp(14.5px,1.15vw,19px);font-weight:400;color:rgba(255,255,255,.96);margin-top:10px;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)"></div>
     <div id="gameMeta" style="font-size:12px;font-weight:300;color:rgba(255,255,255,.58);margin-top:6px;font-variant-numeric:tabular-nums;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)"></div>
     <div style="display:flex;gap:10px;margin-top:16px;align-items:center">
-      <div id="playBtn" class="ps5-action-btn" tabindex="0" onclick="launchSelected()" style="color:#fff;font-weight:500;font-size:15px;width:clamp(190px,15vw,240px);text-align:center;border-radius:99px;cursor:pointer">Play</div>
+      <div id="playBtn" class="ps5-action-btn" tabindex="0" onclick="launchSelected()" style="color:#fff;font-weight:600;font-size:15px;width:clamp(190px,15vw,240px);text-align:center;border-radius:99px;cursor:pointer">Play</div>
       <div class="ps5-action-btn" tabindex="0" onclick="toggleGameMenu()" style="width:clamp(44px,3.4vw,54px);border-radius:50%;font-size:15px;cursor:pointer"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg></div>
     </div>
   </div>
   <div id="heroCard" style="position:absolute;z-index:2;right:clamp(28px,3.6vw,64px);bottom:clamp(48px,6.5vh,84px);width:clamp(230px,18vw,310px)">
-    <div style="position:relative;border-radius:10px;overflow:hidden;box-shadow:0 6px 24px rgba(0,0,0,.5)"><img id="cardImg" style="width:clamp(230px,18vw,310px);aspect-ratio:16/9;height:auto;object-fit:cover;display:block"><div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.45) 0%,rgba(0,0,0,0) 30%,rgba(0,0,0,0) 55%,rgba(0,0,0,.55) 100%);pointer-events:none"></div><div style="position:absolute;top:8px;left:8px;font-size:11px;font-weight:500;border:1px solid rgba(255,255,255,.45);border-radius:4px;padding:1px 6px;opacity:.78;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)">Full Game</div><div id="cardPrice" style="position:absolute;bottom:8px;left:10px;font-size:12.5px;font-weight:500;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65);font-variant-numeric:tabular-nums"></div></div>
+    <div style="position:relative;border-radius:10px;overflow:hidden;box-shadow:0 6px 24px rgba(0,0,0,.5)"><img id="cardImg" style="width:clamp(230px,18vw,310px);aspect-ratio:16/9;height:auto;object-fit:cover;display:block"><div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.45) 0%,rgba(0,0,0,0) 30%,rgba(0,0,0,0) 55%,rgba(0,0,0,.55) 100%);pointer-events:none"></div><div style="position:absolute;top:8px;left:8px;font-size:11px;font-weight:600;border:1px solid rgba(255,255,255,.45);border-radius:4px;padding:1px 6px;opacity:.78;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)">Full Game</div><div id="cardPrice" style="position:absolute;bottom:8px;left:10px;font-size:12.5px;font-weight:600;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65);font-variant-numeric:tabular-nums"></div></div>
     <div style="background:rgba(18,22,30,.55);backdrop-filter:blur(20px);border-radius:12px;border:1px solid rgba(255,255,255,.08);padding:12px 14px;margin-top:8px"><div style="display:flex;gap:10px;align-items:center">
       <span style="display:flex;align-items:center;justify-content:center;width:20px;height:20px;color:rgba(255,255,255,.96);flex:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M7 3h10v6a5 5 0 0 1-10 0V3z"/><path d="M7 5H4a3 3 0 0 0 3 3"/><path d="M17 5h3a3 3 0 0 1-3 3"/><path d="M12 14v4"/><path d="M8 21h8"/><path d="M10 18h4"/></svg></span>
-      <div><div style="font-size:10.5px;font-weight:300;color:rgba(255,255,255,.58);text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)">Progress</div><div id="trophyP" style="font-size:15px;font-weight:500;color:rgba(255,255,255,.96);font-variant-numeric:tabular-nums;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)"></div></div>
-      <div style="margin-left:auto"><div style="font-size:10.5px;font-weight:300;color:rgba(255,255,255,.58);text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)">Earned</div><div id="trophyE" style="font-size:15px;font-weight:500;color:rgba(255,255,255,.96);font-variant-numeric:tabular-nums;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)"></div></div>
+      <div><div style="font-size:10.5px;font-weight:300;color:rgba(255,255,255,.58);text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)">Progress</div><div id="trophyP" style="font-size:15px;font-weight:600;color:rgba(255,255,255,.96);font-variant-numeric:tabular-nums;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)"></div></div>
+      <div style="margin-left:auto"><div style="font-size:10.5px;font-weight:300;color:rgba(255,255,255,.58);text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)">Earned</div><div id="trophyE" style="font-size:15px;font-weight:600;color:rgba(255,255,255,.96);font-variant-numeric:tabular-nums;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)"></div></div>
     </div></div>
     <div id="gameStats" style="font-size:11.5px;font-weight:300;color:rgba(255,255,255,.58);margin-top:7px;text-align:right;font-variant-numeric:tabular-nums;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)"></div>
   </div>
   <div id="emptyState" style="display:none;position:absolute;z-index:2;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;max-width:560px">
-    <div style="font-size:clamp(28px,2.6vw,42px);font-weight:500;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)">No games yet</div>
+    <div style="font-size:clamp(28px,2.6vw,42px);font-weight:600;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)">No games yet</div>
     <div style="font-size:15px;color:rgba(255,255,255,.65);margin-top:10px;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)">Scan a folder or add a game to build your library.</div>
     <div style="display:flex;gap:10px;justify-content:center;margin-top:22px">
-      <div onclick="emptyStateScan()" class="ps5-action-btn" style="color:#fff;font-weight:500;font-size:15px;padding:0 26px;border-radius:99px;cursor:pointer">Scan for games</div>
-      <div onclick="addGameFlow()" class="ps5-action-btn" style="color:#fff;font-weight:500;font-size:15px;padding:0 26px;border-radius:99px;cursor:pointer">Add Game</div>
+      <div onclick="emptyStateScan()" class="ps5-action-btn" style="color:#fff;font-weight:600;font-size:15px;padding:0 26px;border-radius:99px;cursor:pointer">Scan for games</div>
+      <div onclick="addGameFlow()" class="ps5-action-btn" style="color:#fff;font-weight:600;font-size:15px;padding:0 26px;border-radius:99px;cursor:pointer">Add Game</div>
     </div>
   </div>
   <div id="cc" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(12px);z-index:6">
-    <div style="position:absolute;left:clamp(28px,3.6vw,64px);bottom:120px;display:flex;gap:12px">
-      <div style="width:210px;height:150px;border-radius:12px;overflow:hidden;position:relative;background-size:cover;background-position:center;backdrop-filter:blur(18px)" id="newsCard"><div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,0) 35%,rgba(0,0,0,.78) 100%);pointer-events:none"></div><div style="position:absolute;top:8px;left:8px;width:26px;height:26px;border-radius:6px;background:rgba(255,255,255,.9);color:#111;display:flex;align-items:center;justify-content:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"/></svg></div><div style="position:absolute;bottom:10px;left:12px"><div style="font-size:11px;font-weight:300;color:rgba(255,255,255,.58)">3 stories from your games</div><div style="font-size:15px;font-weight:500">Official news</div></div></div>
-      <div style="width:210px;height:150px;border-radius:12px;overflow:hidden;position:relative;background:rgba(30,30,40,.9);backdrop-filter:blur(18px)"><div style="margin:12px 12px 0;height:86px;border-radius:8px;background-size:cover;background-position:center;position:relative" id="clipCard"><span style="position:absolute;top:6px;left:6px;background:rgba(0,0,0,.6);font-size:10.5px;padding:2px 6px;border-radius:4px">00:14</span></div><div style="padding:8px 12px"><div style="font-size:11px;font-weight:300;color:rgba(255,255,255,.58)">Recently created</div><div style="font-size:15px;font-weight:500">New video clip</div></div></div>
     </div>
     <div style="position:absolute;left:0;right:0;bottom:56px;display:flex;gap:26px;justify-content:center;align-items:center">
-      <span class="ccDockItem" data-label="Home" onclick="toggleCC()"><span class="ccDockIc"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M3 11l9-7.5L21 11"/><path d="M5.5 9.5V20h13V9.5"/></svg></span></span><span class="ccDockItem" data-label="Library"><span class="ccDockIc"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg></span></span><span class="ccDockItem" data-label="Notifications"><span class="ccDockIc"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M18 9.5a6 6 0 1 0-12 0c0 5.5-2 6.5-2 6.5h16s-2-1-2-6.5"/><path d="M10.2 19.5a1.9 1.9 0 0 0 3.6 0"/></svg></span></span><span class="ccDockItem" data-label="Game Base"><span class="ccDockIc"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none"/></svg></span></span><span class="ccDockItem" data-label="Music"><span class="ccDockIc"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M9 18.5V6l11-2.5V16"/><circle cx="6.5" cy="18.5" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></svg></span></span><span class="ccDockItem" data-label="Sound"><span class="ccDockIc"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M11 5L6.5 9H3v6h3.5L11 19V5z"/><path d="M15 9.5a4 4 0 0 1 0 5"/><path d="M18 7a8 8 0 0 1 0 10"/></svg></span></span><span class="ccDockItem" data-label="Mic"><span class="ccDockIc"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><rect x="9" y="2.5" width="6" height="11.5" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0"/><path d="M12 18v3.5"/></svg></span></span><span class="ccDockItem" data-label="Accessories"><span class="ccDockIc"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M6.8 7.5h10.4a4.6 4.6 0 0 1 4.5 5.6l-.5 2a2.6 2.6 0 0 1-2.6 2c-1.2 0-1.9-.8-2.5-1.9H7.9c-.6 1.1-1.3 1.9-2.5 1.9a2.6 2.6 0 0 1-2.6-2l-.5-2a4.6 4.6 0 0 1 4.5-5.6z"/><path d="M7.5 11v3M6 12.5h3"/><circle cx="16" cy="11.5" r="1" fill="currentColor" stroke="none"/><circle cx="18" cy="13.5" r="1" fill="currentColor" stroke="none"/></svg></span></span><span class="ccDockItem" data-label="Profile"><span class="ccDockIc"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg></span></span><span class="ccDockItem" data-label="Power" onclick="openPower()"><span class="ccDockIc"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M12 3v7"/><path d="M6.3 6.5a8 8 0 1 0 11.4 0"/></svg></span></span>
+      <span class="ccDockItem" data-label="Home" onclick="toggleCC()"><span class="ccDockIc"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M3 11l9-7.5L21 11"/><path d="M5.5 9.5V20h13V9.5"/></svg></span></span><span class="ccDockItem" data-label="Power" onclick="openPower()"><span class="ccDockIc"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M12 3v7"/><path d="M6.3 6.5a8 8 0 1 0 11.4 0"/></svg></span></span>
     </div>
-    <div style="position:absolute;right:clamp(28px,3.6vw,64px);bottom:56px;font-size:13px;color:rgba(255,255,255,.85)"><span style="display:inline-flex;vertical-align:-2px;margin-right:6px;width:14px;height:14px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M4 7h16M4 12h16M4 17h16"/></svg></span>Customise</div>
   </div>
   <div id="powerMenu" style="display:none;position:absolute;right:clamp(28px,3.6vw,64px);top:120px;width:380px;background:rgba(28,28,34,.97);backdrop-filter:blur(18px);border-radius:14px;padding:18px 20px;z-index:8;box-shadow:0 12px 40px rgba(0,0,0,.6)">
     <div style="display:flex;align-items:center"><span style="font-size:15px;color:rgba(255,255,255,.85)">Power</span><span onclick="closePower()" style="margin-left:auto;cursor:pointer;color:rgba(255,255,255,.7);display:flex;align-items:center;justify-content:center;width:20px;height:20px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M6 6l12 12M18 6L6 18"/></svg></span></div>
-    <div class="pwItem" onclick="selPower(0)" style="margin-top:12px;border:1.5px solid rgba(255,255,255,.85);background:rgba(255,255,255,.12);border-radius:10px;padding:13px 14px;cursor:pointer"><div style="font-size:15px"><span style="display:inline-flex;vertical-align:-3px;margin-right:8px;width:17px;height:17px"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M12 3v7"/><path d="M6.3 6.5a8 8 0 1 0 11.4 0"/></svg></span>Sleep</div><div class="pwDesc" style="font-size:12px;font-weight:300;color:rgba(255,255,255,.58);margin-top:5px;line-height:1.45">Charge controllers, download updates, and suspend your games. Don't unplug the AC power cord while in rest mode.</div></div>
-    <div class="pwItem" onclick="selPower(1)" style="margin-top:8px;padding:13px 14px;cursor:pointer"><div style="font-size:15px"><span style="display:inline-flex;vertical-align:-3px;margin-right:8px;width:17px;height:17px"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="8.5"/></svg></span>Shut Down</div><div class="pwDesc" style="display:none;font-size:12px;color:rgba(255,255,255,.65);margin-top:5px;line-height:1.45">Close all games and apps, and turn off your PS5. Select this before unplugging the AC power cord.</div></div>
-    <div class="pwItem" onclick="selPower(2)" style="margin-top:8px;padding:13px 14px;cursor:pointer"><div style="font-size:15px"><span style="display:inline-flex;vertical-align:-3px;margin-right:8px;width:17px;height:17px"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 3v4h-4"/></svg></span>Restart</div></div>
+    <div class="pwItem" onclick="exitLauncher()" style="margin-top:12px;border:1.5px solid rgba(255,255,255,.85);background:rgba(255,255,255,.12);border-radius:10px;padding:13px 14px;cursor:pointer"><div style="font-size:15px"><span style="display:inline-flex;vertical-align:-3px;margin-right:8px;width:17px;height:17px"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M12 3v7"/><path d="M6.3 6.5a8 8 0 1 0 11.4 0"/></svg></span>Exit Sonic Launcher</div><div class="pwDesc" style="font-size:12px;font-weight:300;color:rgba(255,255,255,.58);margin-top:5px;line-height:1.45">Close the launcher completely.</div></div>
   </div>
   <div id="settings" style="display:none;position:absolute;inset:0;background:radial-gradient(ellipse 90% 60% at 8% 0%,rgba(200,190,170,.28),rgba(8,8,14,.97) 55%);z-index:8;overflow-y:auto">
     <div style="padding:34px 0 0 60px;font-size:26px;font-weight:300">Settings</div>
-    <div id="launcherSettings" style="margin:22px 60px 0;padding:16px 20px;border:1px solid rgba(255,255,255,.18);border-radius:12px;background:rgba(10,12,20,.55);font-size:14px;color:rgba(255,255,255,.9)">
-      <div style="font-size:16px;font-weight:500;margin-bottom:12px">Sonic Launcher</div>
-      <div style="margin-bottom:12px">SteamGridDB API key <span id="sgdbStatus" style="color:rgba(255,255,255,.55);font-size:12px"></span><br>
-        <input id="sgdbKey" type="password" placeholder="Paste your SteamGridDB key" autocomplete="off" style="width:340px;max-width:60vw;margin-top:6px;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.45);color:#fff;font-size:13px">
-        <button onclick="saveSgdbKey()" style="margin-left:8px;padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.3);background:rgba(139,32,255,.5);color:#fff;cursor:pointer;font-size:13px">Save</button>
-        <div style="font-size:12px;color:rgba(255,255,255,.55);margin-top:6px">Get a free key: steamgriddb.com/profile/preferences/api <button onclick="copySgdbLink()" style="margin-left:6px;padding:3px 9px;border-radius:6px;border:1px solid rgba(255,255,255,.3);background:transparent;color:rgba(255,255,255,.85);cursor:pointer;font-size:12px">Copy link</button></div>
-      </div>
-      <div style="margin-bottom:12px"><label><input id="autoFetchArt" type="checkbox" checked onchange="saveAutoFetchArt(this)" style="vertical-align:-2px"> Auto-fetch cover art from Steam</label> <span style="color:rgba(255,255,255,.55);font-size:12px">(no key needed &mdash; looks up covers for scanned games, GOG as a fallback)</span></div>
-      <div style="margin-bottom:12px"><label><input id="musicEnabled" type="checkbox" checked onchange="saveMusicToggle(this)" style="vertical-align:-2px"> Theme music</label>
-        <label style="margin-left:16px">Volume <input id="musicVolume" type="range" min="0" max="100" value="30" onchange="saveMusicVolume(this)" oninput="saveMusicVolume(this)" style="vertical-align:-3px;width:120px"></label>
-      </div>
-      <div style="margin-bottom:12px"><label><input id="minOnLaunch" type="checkbox" checked onchange="saveMinOnLaunch(this)" style="vertical-align:-2px"> Minimize launcher when a game starts</label></div>
+        <div id="launcherSettings" style="margin:22px 60px 0;padding:16px 20px;border:1px solid rgba(255,255,255,.18);border-radius:12px;background:rgba(10,12,20,.55);font-size:14px;color:rgba(255,255,255,.9)">
+      <div style="font-size:16px;font-weight:600;margin-bottom:12px">Sonic Launcher</div>
+      <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.55);letter-spacing:.06em;margin:14px 0 8px">GENERAL</div>
       <div style="margin-bottom:12px"><label><input id="skipBoot" type="checkbox" onchange="saveSkipBoot(this)" style="vertical-align:-2px"> Skip Boot Animation</label></div>
-      <div style="margin-bottom:12px"><label><input id="sfxEnabled" type="checkbox" checked onchange="saveSfxToggle(this)" style="vertical-align:-2px"> UI Sound Effects</label>
-        <label style="margin-left:16px">Volume <input id="sfxVolume" type="range" min="0" max="100" value="80" onchange="saveSfxVolume(this)" oninput="saveSfxVolume(this)" style="vertical-align:-3px;width:120px"></label>
-      </div>
-      <div style="margin-bottom:12px"><button onclick="openSfxFolder()" style="padding:7px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.3);background:rgba(0,200,255,.25);color:#fff;cursor:pointer;font-size:13px">Open SFX Folder</button> <span style="color:rgba(255,255,255,.55);font-size:12px">Drop your own sounds here &mdash; boot, nav, select, launch, back, cc_open, ambient (.mp3 / .wav / .ogg / .m4a)</span></div>
+      <div style="margin-bottom:12px"><label><input id="minOnLaunch" type="checkbox" checked onchange="saveMinOnLaunch(this)" style="vertical-align:-2px"> Close UI to tray while gaming (saves RAM)</label><div style="font-size:12px;color:rgba(255,255,255,.55);margin:4px 0 0 22px">Frees ~150 MB RAM during gameplay; reopens automatically when the game exits.</div></div>
+      <div style="margin-bottom:12px"><label><input id="reduceAnimations" type="checkbox" onchange="saveReduceAnimations(this)" style="vertical-align:-2px"> Reduce Animations / Performance Mode</label><div style="font-size:12px;color:rgba(255,255,255,.55);margin:4px 0 0 22px">Turns off background motion, blur and focus-ring effects &mdash; for slower PCs and RDP.</div></div>
+      <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.55);letter-spacing:.06em;margin:14px 0 8px">LIBRARY &amp; ARTWORK</div>
       <div>Scan folders <span style="color:rgba(255,255,255,.55);font-size:12px">(extra folders to search for games)</span>
         <div id="scanFolderList" style="margin-top:6px;font-size:12.5px;color:rgba(255,255,255,.75)"></div>
         <button onclick="addScanFolderFlow()" style="margin-top:8px;padding:7px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.3);background:rgba(0,200,255,.25);color:#fff;cursor:pointer;font-size:13px">Add folder&hellip;</button>
       </div>
-      <div style="margin-top:12px">Ambient music <span style="color:rgba(255,255,255,.55);font-size:12px">(played for games with no theme music)</span><br>
+      <div style="margin-top:12px"><label><input id="autoFetchArt" type="checkbox" checked onchange="saveAutoFetchArt(this)" style="vertical-align:-2px"> Auto-fetch cover art from Steam</label> <span style="color:rgba(255,255,255,.55);font-size:12px">(no key needed &mdash; looks up covers for scanned games, GOG as a fallback)</span></div>
+      <div style="margin-top:12px">SteamGridDB API key <span style="color:rgba(255,255,255,.55);font-size:12px">Optional (for non-Steam exclusives)</span> <span id="sgdbStatus" style="color:rgba(255,255,255,.55);font-size:12px"></span><br>
+        <input id="sgdbKey" type="password" placeholder="Paste your SteamGridDB key" autocomplete="off" style="width:340px;max-width:60vw;margin-top:6px;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.45);color:#fff;font-size:13px">
+        <button onclick="saveSgdbKey()" style="margin-left:8px;padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.3);background:rgba(139,32,255,.5);color:#fff;cursor:pointer;font-size:13px">Save</button>
+        <div style="font-size:12px;color:rgba(255,255,255,.55);margin-top:6px">Get a free key: steamgriddb.com/profile/preferences/api <button onclick="copySgdbLink()" style="margin-left:6px;padding:3px 9px;border-radius:6px;border:1px solid rgba(255,255,255,.3);background:transparent;color:rgba(255,255,255,.85);cursor:pointer;font-size:12px">Copy link</button></div>
+      </div>
+      <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.55);letter-spacing:.06em;margin:14px 0 8px">AUDIO</div>
+      <div style="margin-bottom:12px"><label><input id="musicEnabled" type="checkbox" onchange="saveMusicToggle(this)" style="vertical-align:-2px"> Theme music</label>
+        <label style="margin-left:16px">Volume <input id="musicVolume" type="range" min="0" max="100" value="30" onchange="saveMusicVolume(this)" oninput="saveMusicVolume(this)" style="vertical-align:-3px;width:120px"></label>
+      </div>
+      <div style="margin-bottom:12px"><label><input id="sfxEnabled" type="checkbox" checked onchange="saveSfxToggle(this)" style="vertical-align:-2px"> UI Sound Effects</label>
+        <label style="margin-left:16px">Volume <input id="sfxVolume" type="range" min="0" max="100" value="80" onchange="saveSfxVolume(this)" oninput="saveSfxVolume(this)" style="vertical-align:-3px;width:120px"></label>
+      </div>
+      <div style="margin-bottom:12px">Ambient music <span style="color:rgba(255,255,255,.55);font-size:12px">(played for games with no theme music)</span><br>
         <span id="ambientStatus" style="font-size:12.5px;color:rgba(255,255,255,.75)">Not set &mdash; silent for games without a theme.</span>
         <button onclick="pickAmbientFile()" style="margin-left:8px;padding:7px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.3);background:rgba(0,200,255,.25);color:#fff;cursor:pointer;font-size:13px">Choose file&hellip;</button>
         <button onclick="clearAmbientFile()" style="margin-left:6px;padding:7px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.3);background:transparent;color:rgba(255,255,255,.75);cursor:pointer;font-size:13px">Clear</button>
       </div>
-      <div id="appVersion" style="margin-top:14px;font-size:12px;color:rgba(255,255,255,.45)">Sonic Launcher</div>
+      <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.55);letter-spacing:.06em;margin:14px 0 8px">ABOUT</div>
+      <div id="appVersion" style="margin-bottom:12px;font-size:12px;color:rgba(255,255,255,.45)">Sonic Launcher</div>
+      <div style="margin-bottom:12px"><button onclick="clearArtMusicCache()" style="padding:7px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.3);background:rgba(0,200,255,.25);color:#fff;cursor:pointer;font-size:13px">Clear Art / Music Cache</button> <span style="color:rgba(255,255,255,.55);font-size:12px">Deletes cached covers and theme music; they are fetched again on demand.</span></div>
+      <div><button onclick="exitLauncher()" style="padding:7px 12px;border-radius:8px;border:1px solid rgba(240,45,205,.5);background:rgba(240,45,205,.18);color:#fff;cursor:pointer;font-size:13px">Exit Launcher</button> <span style="color:rgba(255,255,255,.55);font-size:12px">Close the launcher completely.</span></div>
     </div>
-    <div style="display:flex;margin-top:26px">
-      <div style="width:340px;margin-left:110px;font-size:16px;color:rgba(255,255,255,.85)">
-        <div style="padding:11px 14px"><span style="display:inline-flex;vertical-align:-3px;margin-right:8px;width:18px;height:18px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.5" r="1" fill="currentColor" stroke="none"/></svg></span>User's Guide, Health and Safety, and Other Information</div>
-        <div style="padding:11px 14px"><span style="display:inline-flex;vertical-align:-3px;margin-right:8px;width:18px;height:18px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="5" r="2.2"/><path d="M4 9.5h16"/><path d="M12 9.5v5"/><path d="M12 14.5l-3 6M12 14.5l3 6"/></svg></span>Accessibility</div>
-        <div style="padding:11px 14px"><span style="display:inline-flex;vertical-align:-3px;margin-right:8px;width:18px;height:18px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.6 2.6 3.8 5.6 3.8 9s-1.2 6.4-3.8 9c-2.6-2.6-3.8-5.6-3.8-9S9.4 5.6 12 3z"/></svg></span>Network</div>
-        <div style="padding:11px 14px"><span style="display:inline-flex;vertical-align:-3px;margin-right:8px;width:18px;height:18px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg></span>Users and Accounts</div>
-        <div style="padding:11px 14px"><span style="display:inline-flex;vertical-align:-3px;margin-right:8px;width:18px;height:18px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8"/><path d="M17.5 14.6a6.5 6.5 0 0 1 4 5.4"/></svg></span>Family and Parental Controls</div>
-        <div style="padding:11px 14px;border:1.5px solid rgba(255,255,255,.85);border-radius:8px"><span style="display:inline-flex;vertical-align:-3px;margin-right:8px;width:18px;height:18px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="10" y="10" width="4" height="4" rx="1"/><path d="M9 6V3M15 6V3M9 21v-3M15 21v-3M6 9H3M6 15H3M21 9h-3M21 15h-3"/></svg></span>System</div>
-        <div style="padding:11px 14px"><span style="display:inline-flex;vertical-align:-3px;margin-right:8px;width:18px;height:18px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><ellipse cx="12" cy="5.5" rx="8" ry="2.8"/><path d="M4 5.5v13c0 1.5 3.6 2.8 8 2.8s8-1.3 8-2.8v-13"/><path d="M4 12c0 1.5 3.6 2.8 8 2.8s8-1.3 8-2.8"/></svg></span>Storage</div>
-        <div style="padding:11px 14px"><span style="display:inline-flex;vertical-align:-3px;margin-right:8px;width:18px;height:18px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M11 5L6.5 9H3v6h3.5L11 19V5z"/><path d="M15 9.5a4 4 0 0 1 0 5"/><path d="M18 7a8 8 0 0 1 0 10"/></svg></span>Sound</div>
-        <div style="padding:11px 14px"><span style="display:inline-flex;vertical-align:-3px;margin-right:8px;width:18px;height:18px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M9 20.5h6M12 16.5v4"/></svg></span>Screen and Video</div>
-      </div>
-      <div style="margin-left:60px;font-size:15px;color:rgba(255,255,255,.55)">
-        <div style="border-bottom:1px solid rgba(255,255,255,.14);padding:9px 0">System Software</div><div style="border-bottom:1px solid rgba(255,255,255,.14);padding:9px 0">HDMI</div><div style="border-bottom:1px solid rgba(255,255,255,.14);padding:9px 0">Language</div><div style="border-bottom:1px solid rgba(255,255,255,.14);padding:9px 0">Date and Time</div><div style="border-bottom:1px solid rgba(255,255,255,.14);padding:9px 0">Remote Play</div><div style="border-bottom:1px solid rgba(255,255,255,.14);padding:9px 0">Power Saving</div><div style="padding:9px 0">Web Browser</div>
-      </div>
-    </div>
-    <div onclick="closeSettings()" style="position:absolute;top:20px;right:clamp(28px,3.6vw,64px);cursor:pointer;font-size:15px;color:rgba(255,255,255,.8)"><span style="display:inline-flex;vertical-align:-2px;margin-right:6px;width:14px;height:14px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M6 6l12 12M18 6L6 18"/></svg></span>Close</div>
+<div onclick="closeSettings()" style="position:absolute;top:20px;right:clamp(28px,3.6vw,64px);cursor:pointer;font-size:15px;color:rgba(255,255,255,.8)"><span style="display:inline-flex;vertical-align:-2px;margin-right:6px;width:14px;height:14px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M6 6l12 12M18 6L6 18"/></svg></span>Close</div>
   </div>
   <div id="miniPill" style="position:absolute;left:50%;transform:translateX(-50%);bottom:16px;z-index:7;display:flex;align-items:center;gap:10px;padding:8px 14px;border-radius:99px;background:rgba(18,22,30,.55);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.10)">
     <span class="eq" onclick="toggleThemePlayback()" title="Pause / resume theme music" style="display:flex;align-items:flex-end;height:14px;cursor:pointer"><span></span><span></span><span></span></span>
-    <span id="trackName" onclick="toggleThemePlayback()" title="Pause / resume theme music" style="font-size:12.5px;font-weight:500;white-space:nowrap;cursor:pointer;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)"></span>
+    <span id="trackName" onclick="toggleThemePlayback()" title="Pause / resume theme music" style="font-size:12.5px;font-weight:600;white-space:nowrap;cursor:pointer;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)"></span>
     <span onclick="replayBoot()" style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:400;border:1px solid rgba(255,255,255,.35);border-radius:99px;padding:4px 10px"><span style="display:inline-flex;width:12px;height:12px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 3v4h-4"/></svg></span>Boot</span>
     <span onclick="toggleCC()" style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:400;border:1px solid rgba(255,255,255,.35);border-radius:99px;padding:4px 10px">PS</span>
   </div>
@@ -178,12 +166,6 @@ function buildRow(){
   var row = document.getElementById('row');
   row.innerHTML = '';
   tileEls = [];
-  var store = document.createElement('div');
-  store.className = 'game-tile';
-  store.style.cursor = 'pointer';
-  store.innerHTML = '<div style="width:100%;height:100%;border-radius:inherit;background:linear-gradient(135deg,#0070D1,#0057A8);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#fff">PS<br>Store</div>';
-  row.appendChild(store);
-  tileEls.push(store);
   GAMES.forEach(function(g,i){
     var d = document.createElement('div');
     d.className = 'game-tile';
@@ -204,6 +186,7 @@ function buildRow(){
   lib.className = 'game-tile';
   lib.style.cursor = 'pointer';
   lib.innerHTML = '<div style="width:100%;height:100%;border-radius:inherit;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;color:#fff"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg></div>';
+  lib.onclick = function(){ playSfx('nav'); openLibraryGrid(); };
   row.appendChild(lib);
   tileEls.push(lib);
 }
@@ -295,6 +278,18 @@ function updateGameLogo(){
     title.style.display = 'none';
   }
 }
+/* v0.2.11: the hero stats line shows ONLY real play history — hours
+   and "Last played ..." appear only when the game was actually played.
+   No more "— • Last played —" placeholders. g.hours / g.last are
+   filled by loadRealPlaytime(); until then both are '—' and the line
+   stays empty. */
+function renderGameStats(g){
+  var parts = [];
+  if(g.hours && g.hours !== '\u2014'){ parts.push(g.hours); }
+  if(g.last && g.last !== '\u2014'){ parts.push('Last played ' + g.last); }
+  var el = document.getElementById('gameStats');
+  if(el){ el.textContent = parts.join('  \u2022  '); }
+}
 function render(){
   updateEmptyState();
   var g = GAMES[sel];
@@ -305,7 +300,6 @@ function render(){
   updateGameLogo();
   document.getElementById('gameTag').textContent = g.tag;
   document.getElementById('gameMeta').textContent = g.meta;
-  document.getElementById('gameStats').textContent = g.hours + '  •  Last played ' + g.last;
   var cardImgEl = document.getElementById('cardImg');
   /* v0.2.8: the 16:9 "Full Game" card keeps the landscape header;
      the square row tile uses the portrait capsule (g.img). */
@@ -318,15 +312,13 @@ function render(){
   document.getElementById('trophyP').textContent = g.trophyp;
   document.getElementById('trophyE').textContent = g.trophye;
   document.getElementById('trackName').textContent = g.music;
-  var gNews = GAMES[2] || GAMES[0];
-  document.getElementById('newsCard').style.backgroundImage = 'url("'+gNews.bg+'")';
-  document.getElementById('clipCard').style.backgroundImage = 'url("'+GAMES[0].bg+'")';
+  renderGameStats(g);
   setHeroBg(sel);
 }
 function tileSmPx(){ var v = (window.innerWidth || document.documentElement.clientWidth)*0.052; return Math.min(108, Math.max(64, v)); }
 function anchorRow(){
   var sm = tileSmPx();
-  var focusedLeft = (sel+1)*(sm+12) + 8;
+  var focusedLeft = sel*(sm+12) + 8;
   var anchor = sm + 12 + 8;
   document.getElementById('row').style.transform = 'translateX('+Math.min(0, anchor - focusedLeft)+'px)';
 }
@@ -336,11 +328,11 @@ function selectGame(i){
   if(!GAMES.length || i < 0 || i >= GAMES.length){ sel = -1; updateEmptyState(); return; }
   if(i === sel && tileEls.length){ return; }
   if(sel >= 0){
-    var oldEl = tileEls[sel+1];
+    var oldEl = tileEls[sel];
     if(oldEl){ oldEl.classList.remove('is-focused'); oldEl.innerHTML = tilePlainHTML(GAMES[sel]); }
   }
   sel = i;
-  var newEl = tileEls[sel+1];
+  var newEl = tileEls[sel];
   newEl.classList.add('is-focused');
   newEl.innerHTML = tileFocusedHTML(GAMES[sel]);
   anchorRow();
@@ -353,7 +345,15 @@ function openPower(){ playSfx('select'); document.getElementById('powerMenu').st
 function closePower(){ var el = document.getElementById('powerMenu'); if(el && el.style.display !== 'none'){ el.style.display = 'none'; playSfx('back'); } }
 function openSettings(){ playSfx('select'); document.getElementById('settings').style.display = 'block'; populateLauncherSettings(); }
 function closeSettings(){ var el = document.getElementById('settings'); if(el && el.style.display !== 'none'){ el.style.display = 'none'; playSfx('back'); } }
-var now = new Date(); var hh=now.getHours(),ap=hh>=12?'PM':'AM';hh=hh%12;if(hh===0)hh=12;document.getElementById('clock').textContent = hh+':'+('0'+now.getMinutes()).slice(-2)+' '+ap;
+/* v0.2.11: the header clock actually ticks (it was set once at load
+   and then froze — the "stuck clock" from the v0.2.8 live test). */
+function tickClock(){
+  var now = new Date(); var hh=now.getHours(),ap=hh>=12?'PM':'AM';hh=hh%12;if(hh===0)hh=12;
+  var el = document.getElementById('clock');
+  if(el){ el.textContent = hh+':'+('0'+now.getMinutes()).slice(-2)+' '+ap; }
+}
+tickClock();
+setInterval(tickClock, 1000);
 
 
 window.addEventListener('resize', function(){ if(sel >= 0){ anchorRow(); } });
@@ -377,7 +377,7 @@ function enterHome(){
   void document.body.offsetWidth;
   document.body.classList.add('home-entering');
   setTimeout(function(){
-    var el = tileEls[sel+1];
+    var el = tileEls[sel];
     if(el && GAMES[sel]){ el.innerHTML = tileFocusedHTML(GAMES[sel]); }
   }, 550);
   setTimeout(function(){ document.body.classList.remove('home-entering'); }, 1100);
@@ -417,7 +417,40 @@ function skipBoot(){
   enterHome();
 }
 function replayBoot(){ bootSeq(); }
-function selPower(i){ var items=document.querySelectorAll('.pwItem'); items.forEach(function(el,j){ if(j===i){ el.style.border='1.5px solid rgba(255,255,255,.85)'; el.style.background='rgba(255,255,255,.12)'; } else { el.style.border='1.5px solid transparent'; el.style.background='transparent'; } var d=el.querySelector('.pwDesc'); if(d){ d.style.display=(j===i)?'block':'none'; } }); }
+/* v0.2.11: the discoverable exit — top-bar Exit, Power menu and the
+   Settings "Exit Launcher" row all end here. quit_launcher calls
+   app.exit(0); Alt+F4 / window close reaches the same end through
+   the run callback when no game is running. */
+function exitLauncher(){
+  var core = tauriCore();
+  if(core){ core.invoke('quit_launcher').catch(function(){}); }
+}
+/* v0.2.11: the Library tile opens the full grid of all detected
+   games — the row only shows a horizontal strip. Picking a game
+   selects it in the row and closes the grid. */
+function openLibraryGrid(){
+  var grid = document.getElementById('libraryGrid');
+  var items = document.getElementById('libraryGridItems');
+  if(!grid || !items){ return; }
+  if(!GAMES.length){
+    items.innerHTML = '<div style="font-size:15px;color:rgba(255,255,255,.65)">No games yet \u2014 scan a folder or add a game.</div>';
+  } else {
+    items.innerHTML = GAMES.map(function(g, i){
+      var icon = !!g.artIsIcon;
+      return '<div onclick="pickLibraryGridGame(' + i + ')" style="cursor:pointer"><div style="aspect-ratio:3/4;border-radius:12px;overflow:hidden;' + (icon ? 'background:linear-gradient(135deg,#8B20FF,#00C8FF,#F02DCD);display:flex;align-items:center;justify-content:center' : 'background:rgba(255,255,255,.07)') + '"><img src="' + escHtml(g.img) + '" style="width:' + (icon ? '62%' : '100%') + ';height:' + (icon ? '62%' : '100%') + ';object-fit:' + (icon ? 'contain' : 'cover') + ';display:block"></div><div style="font-size:13px;margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escHtml(g.row) + '</div></div>';
+    }).join('');
+  }
+  grid.style.display = 'block';
+  playSfx('select');
+}
+function closeLibraryGrid(){
+  var grid = document.getElementById('libraryGrid');
+  if(grid){ grid.style.display = 'none'; playSfx('back'); }
+}
+function pickLibraryGridGame(i){
+  closeLibraryGrid();
+  selectGame(i);
+}
 function showLbl(id){ ['lblSearch','lblSettings'].forEach(function(x){ var e=document.getElementById(x); if(e){ e.style.display=(x===id)?'block':'none'; } }); }
 /* ---- Game search: filter the library by title, pick a result to jump to it. ---- */
 function openSearch(){
@@ -473,30 +506,46 @@ function placeholderArt(name){
   var svg = "<svg xmlns='http://www.w3.org/2000/svg' width='460' height='460'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#8B20FF'/><stop offset='.5' stop-color='#00C8FF'/><stop offset='1' stop-color='#F02DCD'/></linearGradient></defs><rect width='460' height='460' fill='url(#g)'/><text x='230' y='285' font-family='Arial,sans-serif' font-size='190' font-weight='bold' fill='rgba(255,255,255,0.85)' text-anchor='middle'>" + initial + "</text></svg>";
   return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
 }
+/* v0.2.11: the hero title is Title Case, never ALL CAPS. Names that
+   already arrive in natural case ("Grand Theft Auto V") pass through
+   untouched; an ALL-CAPS name is title-cased, but short acronyms
+   (GTA, V, II, KCD) and words with digits (RDR2, BG3) stay uppercase
+   — "GTA V" must never become "Gta V". */
+function titleCaseName(n){
+  n = String(n || 'Unknown');
+  if(n !== n.toUpperCase()){ return n; }
+  return n.toLowerCase().split(/(\s+|[-:])/).map(function(w){
+    if(!w || /^\s+$/.test(w) || w === '-' || w === ':'){ return w; }
+    var up = w.toUpperCase();
+    if(up.length <= 3 || /[0-9]/.test(up)){ return up; }
+    return up.charAt(0) + w.slice(1);
+  }).join('');
+}
 function baseTileFields(name, tag, meta){
   return {
-    key: '', name: String(name || 'Unknown').toUpperCase(), row: name || 'Unknown',
+    key: '', name: String(name || 'Unknown'), row: name || 'Unknown',
     tag: tag, meta: meta, hours: '\u2014', last: '\u2014',
     music: 'No theme music yet', prog: 0, trophyp: '\u2013', trophye: '0', price: '',
-    logo: '<span style="font-weight:500;letter-spacing:2px">' + escHtml(String(name || 'Unknown').toUpperCase()) + '</span>',
+    logo: '<span style="font-weight:300;letter-spacing:-0.02em">' + escHtml(titleCaseName(name)) + '</span>',
     img: placeholderArt(name), bg: placeholderArt(name), platform: 'PC'
   };
 }
 function mapSteamGame(s){
-  var g = baseTileFields(s.name, 'Steam', 'Steam  \u2022  PC');
+  var g = baseTileFields(s.name, '', '');
   g.key = 'steam-' + s.appid; g.source = 'steam'; g.appid = s.appid;
-  g.tag = 'Steam  \u2022  ' + (s.installdir || '');
   return g;
 }
 function mapManualGame(m){
-  var g = baseTileFields(m.name, 'Added manually', 'Manual  \u2022  PC');
+  var g = baseTileFields(m.name, '', '');
   g.key = 'manual-' + m.id; g.source = 'manual'; g.manualId = m.id; g.exePath = m.exe_path;
   return g;
 }
 /* Phase 4: one unified list (Steam + manual + other stores + scanned). */
 function mapUnifiedGame(u){
-  var label = (u.source === 'steam') ? 'Steam' : (u.source === 'manual') ? 'Added manually' : u.source;
-  var g = baseTileFields(u.name, label, (u.source || 'PC') + '  \u2022  PC');
+  /* v0.2.11: no source label in the hero — tag/meta stay empty, so
+     the detail area shows just the title and the Play button (plus
+     "Last played ..." when there is real play history). */
+  var g = baseTileFields(u.name, '', '');
   g.key = u.key; g.source = u.source; g.appid = u.appid || null; g.exePath = u.exe_path || null;
   g.folder = u.folder || null; g.confidence = u.confidence || null;
   g.pickSource = u.pick_source || null; g.hasOverride = !!u.has_override;
@@ -530,13 +579,14 @@ function refreshGames(){
 }
 /* v0.2.9: empty-library state. The hero detail area belongs to a
    selected game, so it hides when there is none; the row still shows
-   the PS Store / + / Library tiles, so the user can always add one. */
+   the + / Library tiles, so the user can always add one. */
 function updateEmptyState(){
   var empty = !GAMES || !GAMES.length;
   var es = document.getElementById('emptyState');
   if(es){ es.style.display = empty ? 'block' : 'none'; }
   var hb = document.getElementById('heroBlock'); if(hb){ hb.style.display = empty ? 'none' : ''; }
   var hc = document.getElementById('heroCard'); if(hc){ hc.style.display = empty ? 'none' : ''; }
+  var hs = document.getElementById('heroScrim'); if(hs){ hs.style.display = empty ? 'none' : ''; }
   var rt = document.getElementById('rowTitle'); if(rt){ rt.style.display = empty ? 'none' : ''; }
 }
 /* Empty-state "Scan for games": rescan the folders already configured;
@@ -665,7 +715,7 @@ document.addEventListener('keydown', function(e){
   if(e.key === 'ArrowLeft'){ playSfx('nav'); selectGame(Math.max(0, sel - 1)); e.preventDefault(); }
   else if(e.key === 'ArrowRight'){ playSfx('nav'); selectGame(Math.min(GAMES.length - 1, sel + 1)); e.preventDefault(); }
   else if(e.key === 'Enter'){ launchSelected(); e.preventDefault(); }
-  else if(e.key === 'Escape'){ closeSettings(); closePower(); hideGameMenu(); closeSearch(); var cc = document.getElementById('cc'); if(cc){ cc.style.display = 'none'; } }
+  else if(e.key === 'Escape'){ closeSettings(); closePower(); hideGameMenu(); closeSearch(); closeLibraryGrid(); var cc = document.getElementById('cc'); if(cc){ cc.style.display = 'none'; } }
 });
 /* Gamepad: dpad / left stick moves (250ms debounce), A plays, B closes panels. */
 var padPrevA = false, padPrevB = false, padLastNav = 0;
@@ -678,7 +728,11 @@ function pollGamepad(){
       if(isBootVisible()){
         var anyBtn = false;
         for(var bi = 0; bi < gp.buttons.length; bi++){ if(gp.buttons[bi] && gp.buttons[bi].pressed){ anyBtn = true; break; } }
-        if(anyBtn){ skipBoot(); return; }
+        /* Skip the boot screen on the press, but ALWAYS re-schedule the
+           next frame first: a bare `return` here used to exit
+           pollGamepad before its final requestAnimationFrame, killing
+           gamepad polling for the rest of the run. */
+        if(anyBtn){ skipBoot(); requestAnimationFrame(pollGamepad); return; }
       }
       var now = performance.now();
       var left = (gp.buttons[14] && gp.buttons[14].pressed) || (gp.axes[0] || 0) < -0.5;
@@ -738,7 +792,7 @@ function applyRealArt(){
         /* v0.2.6: an .exe icon keeps the gradient hero — never
            stretched full-bleed as a background. */
         if(art.is_icon){ g.artIsIcon = true; }
-        var el = tileEls[i+1];
+        var el = tileEls[i];
         if(el){ el.innerHTML = (i === sel) ? tileFocusedHTML(g) : tilePlainHTML(g); }
         if(i === sel){ var ci = document.getElementById('cardImg'); if(ci){ ci.src = g.cardImg; ci.style.objectFit = g.artIsIcon ? 'contain' : 'cover'; if(ci.parentElement){ ci.parentElement.style.background = g.artIsIcon ? 'linear-gradient(135deg,#8B20FF,#00C8FF,#F02DCD)' : ''; } } }
       }
@@ -757,10 +811,18 @@ function applyRealArt(){
   });
 }
 
-/* Phase 3: theme music playback (single <audio>, 500ms debounce). */
+/* Phase 3: theme music playback (single <audio>, 700ms debounce).
+   v0.2.11: selecting another game kills the yt-dlp child the old
+   chain was running (cancel_theme_music) and bumps the generation
+   token, so a stale chain can never start music — or ambient — for
+   the game the user already moved away from. A bot-blocked YouTube
+   (session circuit-breaker, is_youtube_blocked) skips both YouTube
+   steps and the chain falls through to KHInsider / SoundCloud.
+   Theme music is OFF by default (opt-in). */
 var themeAudio = null;
 var themeDebounce = null;
 var themeAutoTried = {};
+var themeGen = 0;
 var THEME_EXCLUDED = ['cover','remix','piano','1 hour','1hr','live','extended','loop','8d','slowed','reverb'];
 function themeOk(c){
   if(!c || c.duration_secs == null || c.duration_secs < 45 || c.duration_secs > 480){ return false; }
@@ -811,15 +873,19 @@ function playCachedMusic(g){
   }).catch(function(){ return false; });
 }
 
-/* ---- Real PS5 UI sound effects (Web Audio, preloaded, no synth) ----
-   Files live in dist/sfx/ (bundled) and can be overridden by dropping
-   files into %APPDATA%\com.sonic.launcher\sfx\ (auto-created).
-   Missing files stay silent — no errors, no synth fallback. */
+/* ---- Real PS5 UI sound effects (Web Audio, lazy-loaded, no synth) ----
+   Files live in dist/sfx/ (bundled, .mp3 only — the single extension
+   actually shipped) and can be overridden by dropping a same-named
+   .mp3 into %APPDATA%\com.sonic.launcher\sfx\.
+   v0.2.11: sounds decode on FIRST USE only. The old preload probed
+   7 stems x 4 extensions x 2 locations (up to 56 fetches + decodes)
+   at startup, every launch. Missing files stay silent — no errors,
+   no synth fallback. */
 var SFX_STEMS = ['boot','nav','select','launch','back','cc_open','ambient'];
-var SFX_EXTS = ['mp3','wav','ogg','m4a'];
-var sfxCtx = null, sfxGain = null, sfxBuffers = {};
+var sfxCtx = null, sfxGain = null, sfxBuffers = {}, sfxTried = {};
 var sfxEnabled = true, sfxVolume = 0.8;
 var ambientSrc = null, ambientGain = null, ambientPlaying = false;
+var sfxDirPromise = null;
 function sfxAudioContext(){
   if(!sfxCtx){
     var AC = window.AudioContext || window.webkitAudioContext;
@@ -836,22 +902,34 @@ function sfxSetVolume(v){
   sfxVolume = Math.max(0, Math.min(1, v));
   if(sfxGain){ sfxGain.gain.value = sfxVolume; }
 }
+/* v0.2.11: settings only — no audio is fetched here anymore. */
 function sfxPreload(){
-  var ctx = sfxAudioContext();
-  if(!ctx){ return; }
   getSetting('sfx_enabled', '1').then(function(en){ sfxEnabled = (en !== '0'); });
   getSetting('sfx_volume', '80').then(function(v){ sfxSetVolume((parseInt(v, 10) || 80) / 100); });
+}
+function sfxDir(){
+  if(!sfxDirPromise){
+    var core = tauriCore();
+    sfxDirPromise = core ? core.invoke('get_sfx_dir').catch(function(){ return null; }) : Promise.resolve(null);
+  }
+  return sfxDirPromise;
+}
+/* Decode one stem on first use: the AppData override (.mp3) first,
+   then the bundled sfx/<name>.mp3. A miss is remembered for the
+   session — a missing file is never probed twice. */
+function ensureSfx(name){
+  if(sfxBuffers[name]){ return Promise.resolve(sfxBuffers[name]); }
+  if(sfxTried[name]){ return Promise.resolve(null); }
+  sfxTried[name] = true;
+  var ctx = sfxAudioContext();
+  if(!ctx){ return Promise.resolve(null); }
   var core = tauriCore();
-  var dirP = core ? core.invoke('get_sfx_dir').catch(function(){ return null; }) : Promise.resolve(null);
-  dirP.then(function(dir){
-    var jobs = SFX_STEMS.map(function(stem){
-      var urls = [];
-      if(dir){ SFX_EXTS.forEach(function(ext){ urls.push(core.convertFileSrc(dir + '/' + stem + '.' + ext)); }); }
-      SFX_EXTS.forEach(function(ext){ urls.push('sfx/' + stem + '.' + ext); });
-      return sfxTryUrls(urls, 0).then(function(buf){ if(buf){ sfxBuffers[stem] = buf; } });
-    });
-    return Promise.all(jobs);
-  }).catch(function(){});
+  return sfxDir().then(function(dir){
+    var urls = [];
+    if(dir && core && core.convertFileSrc){ urls.push(core.convertFileSrc(dir + '/' + name + '.mp3')); }
+    urls.push('sfx/' + name + '.mp3');
+    return sfxTryUrls(urls, 0);
+  }).then(function(buf){ if(buf){ sfxBuffers[name] = buf; } return buf || null; }).catch(function(){ return null; });
 }
 function sfxTryUrls(urls, i){
   var ctx = sfxCtx;
@@ -866,6 +944,14 @@ function sfxTryUrls(urls, i){
 }
 function playSfx(name){
   if(!sfxEnabled){ return; }
+  if(sfxBuffers[name]){ playSfxBuffer(name); return; }
+  /* First use of this stem: fetch + decode, then play (a beat late
+     the very first time, instant afterwards). */
+  ensureSfx(name).then(function(buf){
+    if(buf && sfxEnabled){ playSfxBuffer(name); }
+  });
+}
+function playSfxBuffer(name){
   var ctx = sfxAudioContext();
   var buf = sfxBuffers[name];
   if(!ctx || !buf){ return; }
@@ -877,8 +963,7 @@ function playSfx(name){
   } catch(e){}
 }
 function playBootSfx(){
-  if(sfxBuffers['boot']){ playSfx('boot'); return; }
-  setTimeout(function(){ if(sfxBuffers['boot']){ playSfx('boot'); } }, 350);
+  playSfx('boot');
 }
 function fadeAudioParam(param, target, secs){
   if(!sfxCtx){ return; }
@@ -890,6 +975,11 @@ function fadeAudioParam(param, target, secs){
   } catch(e){}
 }
 function startPs5Ambient(){
+  if(!sfxEnabled){ return; }
+  if(sfxBuffers['ambient']){ startPs5AmbientBuffer(); return; }
+  ensureSfx('ambient').then(function(buf){ if(buf){ startPs5AmbientBuffer(); } });
+}
+function startPs5AmbientBuffer(){
   if(!sfxEnabled){ return; }
   var ctx = sfxAudioContext();
   var buf = sfxBuffers['ambient'];
@@ -924,11 +1014,17 @@ function resumeHomeAudio(){
 }
 
 function scheduleThemeMusic(){
+  /* Kill any yt-dlp child the previous selection left running, then
+     debounce 700ms so a fast flick across games never starts a
+     chain at all. */
+  var core0 = tauriCore();
+  if(core0){ core0.invoke('cancel_theme_music').catch(function(){}); }
   if(themeDebounce){ clearTimeout(themeDebounce); }
+  var gen = ++themeGen;
   themeDebounce = setTimeout(function(){
     var g = GAMES[sel];
     if(!g || !g.source){ stopThemeMusic(); return; }
-    getSetting('music_enabled', '1').then(function(en){
+    getSetting('music_enabled', '0').then(function(en){
       if(en === '0'){ stopThemeMusic(); return; }
       getSetting('music_volume', '30').then(function(vol){
         themeAudioEl().volume = Math.max(0, Math.min(1, (parseInt(vol, 10) || 30) / 100));
@@ -938,25 +1034,33 @@ function scheduleThemeMusic(){
         if(themeAutoTried[g.key]){ return; }
         themeAutoTried[g.key] = true;
         var core = tauriCore();
+        if(!core){ return; }
         /* Music chain: YouTube theme -> YouTube soundtrack OST ->
-           KHInsider -> SoundCloud -> ambient file (if set) -> silent. */
+           KHInsider -> SoundCloud -> ambient file (if set) -> silent.
+           Every step re-checks the generation token: a selection
+           change mid-chain aborts it silently. */
         core.invoke('ensure_ytdlp').catch(function(){ return null; }).then(function(){
-          return tryThemeSearch(core, g, false, 'youtube', themeOk);
+          return core.invoke('is_youtube_blocked').catch(function(){ return false; });
+        }).then(function(blocked){
+          var p = Promise.resolve(false);
+          if(!blocked){
+            p = p.then(function(found){ if(found || gen !== themeGen){ return found; } return tryThemeSearch(core, g, false, 'youtube', themeOk); })
+                 .then(function(found){ if(found || gen !== themeGen){ return found; } return tryThemeSearch(core, g, true, 'youtube', themeOk); });
+          }
+          return p.then(function(found){
+            if(found || gen !== themeGen){ return found; }
+            return tryKhinsider(core, g);
+          }).then(function(found){
+            if(found || gen !== themeGen){ return found; }
+            return tryThemeSearch(core, g, false, 'soundcloud', themeOk);
+          });
         }).then(function(found){
-          if(found){ return true; }
-          return tryThemeSearch(core, g, true, 'youtube', themeOk);
-        }).then(function(found){
-          if(found){ return true; }
-          return tryKhinsider(core, g);
-        }).then(function(found){
-          if(found){ return true; }
-          return tryThemeSearch(core, g, false, 'soundcloud', themeOk);
-        }).then(function(found){
+          if(gen !== themeGen){ return; }
           if(!found){ playAmbientIfSet(g); }
         }).catch(function(){});
       });
     });
-  }, 500);
+  }, 700);
 }
 
 /* One theme-search attempt: search, pick the first result passing
@@ -1017,7 +1121,7 @@ function hideGameMenu(){ var m = document.getElementById('gameMenu'); if(m){ m.s
 function buildGameMenu(){
   var g = GAMES[sel];
   var m = document.getElementById('gameMenu');
-  var html = '<div style="font-weight:500;margin-bottom:8px">' + escHtml(g ? g.row : '') + '</div>';
+  var html = '<div style="font-weight:600;margin-bottom:8px">' + escHtml(g ? g.row : '') + '</div>';
   if(!g){
     html += '<div style="color:rgba(255,255,255,.6);font-size:13px">No game selected.</div>';
   } else {
@@ -1058,7 +1162,7 @@ function changeThemeMusic(){
   if(box){ box.innerHTML = '<div style="font-size:13px;color:rgba(255,255,255,.6)">Searching YouTube&hellip;</div>'; }
   var core = tauriCore();
   core.invoke('ensure_ytdlp').catch(function(){}).then(function(){
-    return core.invoke('search_theme_music', { gameName: g.row });
+    return core.invoke('search_theme_music', { gameName: g.row, fallback: false, source: 'youtube' });
   }).then(function(list){
     if(!box){ return; }
     if(!list || !list.length){ box.innerHTML = '<div style="font-size:13px;color:rgba(255,255,255,.6)">No results found.</div>'; return; }
@@ -1290,13 +1394,14 @@ function populateLauncherSettings(){
     var s = document.getElementById('sgdbStatus');
     if(s){ s.textContent = set ? '(key saved)' : '(not set)'; }
   }).catch(function(){});
-  getSetting('music_enabled', '1').then(function(v){ var el = document.getElementById('musicEnabled'); if(el){ el.checked = (v !== '0'); } });
+  getSetting('music_enabled', '0').then(function(v){ var el = document.getElementById('musicEnabled'); if(el){ el.checked = (v !== '0'); } });
   getSetting('music_volume', '30').then(function(v){ var el = document.getElementById('musicVolume'); if(el){ el.value = parseInt(v, 10) || 30; } });
   getSetting('minimize_on_launch', '1').then(function(v){ var el = document.getElementById('minOnLaunch'); if(el){ el.checked = (v !== '0'); } });
   getSetting('skip_boot', '0').then(function(v){ var el = document.getElementById('skipBoot'); if(el){ el.checked = (v === '1'); } });
   getSetting('sfx_enabled', '1').then(function(v){ var el = document.getElementById('sfxEnabled'); if(el){ el.checked = (v !== '0'); } });
   getSetting('sfx_volume', '80').then(function(v){ var el = document.getElementById('sfxVolume'); if(el){ el.value = parseInt(v, 10) || 80; } });
   getSetting('auto_fetch_art', '1').then(function(v){ var el = document.getElementById('autoFetchArt'); if(el){ el.checked = (v !== '0'); } });
+  getSetting('reduce_animations', '0').then(function(v){ var el = document.getElementById('reduceAnimations'); if(el){ el.checked = (v === '1'); } });
   core.invoke('get_app_version').then(function(v){
     var el = document.getElementById('appVersion');
     if(el){ el.textContent = 'Sonic Launcher v' + v; }
@@ -1374,9 +1479,25 @@ function saveSfxVolume(el){
   var core = tauriCore();
   if(core){ core.invoke('set_setting', { key: 'sfx_volume', value: String(el.value) }).catch(function(){}); }
 }
-function openSfxFolder(){
+function saveReduceAnimations(el){
+  applyReduceAnimations(el.checked);
   var core = tauriCore();
-  if(core){ core.invoke('open_sfx_folder').catch(function(){}); }
+  if(core){ core.invoke('set_setting', { key: 'reduce_animations', value: el.checked ? '1' : '0' }).catch(function(){}); }
+}
+/* v0.2.11: Performance Mode — one body class kills the continuous
+   animations and backdrop blur (see the .reduce-animations rules). */
+function applyReduceAnimations(on){
+  if(typeof document === 'undefined' || !document.body){ return; }
+  document.body.classList.toggle('reduce-animations', !!on);
+}
+/* v0.2.11: Settings → About — forget every cached cover/logo and
+   theme file and reset the art/music decisions in the DB. */
+function clearArtMusicCache(){
+  var core = tauriCore(); if(!core){ return; }
+  core.invoke('clear_art_music_cache').then(function(msg){
+    showToast(msg || 'Cache cleared');
+    refreshGames();
+  }).catch(function(err){ showToast('Could not clear cache: ' + err); });
 }
 function refreshScanFolderList(){
   var core = tauriCore(); if(!core){ return; }
@@ -1430,15 +1551,24 @@ function addScanFolderFlow(){
 /* Phase 5: playtime. */
 var currentSessionId = null;
 var exePoll = null;
+/* v0.2.11: real play history for the hero stats line — total minutes
+   AND the last finished session (get_last_played). Both feed
+   renderGameStats(), which shows only real values. */
 function loadRealPlaytime(){
   var g = GAMES[sel]; if(!g || !g.source){ return; }
   var core = tauriCore(); if(!core){ return; }
   core.invoke('get_playtime', { gameKey: g.key }).then(function(min){
-    if(GAMES[sel] !== g){ return; }
+    if(GAMES[sel] !== g){ return null; }
     if(min && min > 0){
-      var hoursTxt = (min >= 60) ? (Math.floor(min / 60) + ' hours') : (min + ' minutes');
-      document.getElementById('gameStats').textContent = hoursTxt + '  \u2022  Last played ' + g.last;
+      g.hours = (min >= 60) ? (Math.floor(min / 60) + ' hours') : (min + ' minutes');
     }
+    return core.invoke('get_last_played', { gameKey: g.key });
+  }).then(function(last){
+    if(GAMES[sel] !== g){ return; }
+    if(last && last > 0){
+      g.last = new Date(last * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+    renderGameStats(g);
   }).catch(function(){});
 }
 function startExePoll(g, sessionId, win){
@@ -1477,6 +1607,8 @@ function applyVisibilityPause(){
 }
 document.addEventListener('visibilitychange', applyVisibilityPause);
 applyVisibilityPause();
+/* v0.2.11: apply the saved Performance Mode before the first paint. */
+getSetting('reduce_animations', '0').then(function(v){ applyReduceAnimations(v === '1'); });
 sfxPreload(); refreshGames();
 
 bootSeq();

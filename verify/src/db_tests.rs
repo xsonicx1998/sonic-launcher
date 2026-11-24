@@ -233,6 +233,73 @@ mod tests {
     }
 
     #[test]
+    fn stale_playtime_sessions_close_with_zero_minutes() {
+        let conn = open();
+        // Session 1: finished normally (125 minutes) — must be untouched.
+        let start1 = 1_000_000i64;
+        conn.execute(
+            "INSERT INTO playtime (game_key, game_name, started_at, ended_at, minutes) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params!["steam-440", "Team Fortress 2", start1, start1 + 125 * 60, 125],
+        )
+        .unwrap();
+        // Session 2: still open — started 30 min ago, launcher crashed.
+        let start2 = start1 + 200 * 60;
+        conn.execute(
+            "INSERT INTO playtime (game_key, game_name, started_at) VALUES (?1, ?2, ?3)",
+            params!["steam-440", "Team Fortress 2", start2],
+        )
+        .unwrap();
+        // The startup close: exact SQL from db::close_stale_playtime_sessions.
+        let closed = conn
+            .execute(
+                "UPDATE playtime SET ended_at = started_at, minutes = 0 WHERE ended_at IS NULL",
+                [],
+            )
+            .unwrap();
+        assert_eq!(closed, 1);
+        // The stale session credits no time: ended_at = started_at, 0 min.
+        let (ended, minutes): (i64, i64) = conn
+            .query_row(
+                "SELECT ended_at, minutes FROM playtime WHERE started_at = ?1",
+                params![start2],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(ended, start2);
+        assert_eq!(minutes, 0);
+        // The finished session is untouched.
+        let (ended1, minutes1): (i64, i64) = conn
+            .query_row(
+                "SELECT ended_at, minutes FROM playtime WHERE started_at = ?1",
+                params![start1],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(ended1, start1 + 125 * 60);
+        assert_eq!(minutes1, 125);
+        // Total is now just the finished 125 — no phantom time from the
+        // stale session, even when "now" is far in the future.
+        let total: i64 = conn
+            .query_row(
+                "SELECT COALESCE(SUM(minutes), 0) + COALESCE(SUM(
+                    CASE WHEN ended_at IS NULL THEN MAX(0, (?2 - started_at) / 60) ELSE 0 END), 0)
+                 FROM playtime WHERE game_key = ?1",
+                params!["steam-440", start2 + 10 * 3600],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(total, 125);
+        // A second close is a no-op.
+        let closed2 = conn
+            .execute(
+                "UPDATE playtime SET ended_at = started_at, minutes = 0 WHERE ended_at IS NULL",
+                [],
+            )
+            .unwrap();
+        assert_eq!(closed2, 0);
+    }
+
+    #[test]
     fn scanned_games_dedupe_and_list() {
         let conn = open();
         let add = |name: &str, exe: &str| {

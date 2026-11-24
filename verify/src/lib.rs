@@ -1288,6 +1288,26 @@ pub mod music_pure {
         )
     }
 
+    /// Phrases in yt-dlp stderr that mean YouTube is bot-blocking this
+    /// IP. When one matches, the session circuit-breaker skips all
+    /// further YouTube lookups (v0.2.11). Mirror of `music.rs`.
+    pub fn is_bot_block_error(stderr: &str) -> bool {
+        let lower = stderr.to_lowercase();
+        [
+            "sign in to confirm you're not a bot",
+            "confirm you're not a bot",
+            "http error 429",
+            "too many requests",
+            "http error 403",
+        ]
+        .iter()
+        .any(|p| lower.contains(p))
+    }
+
+    /// Hard timeout for a single yt-dlp call, seconds (v0.2.11:
+    /// 8–10 s). Mirror of `music.rs` YTDLP_TIMEOUT_SECS.
+    pub const YTDLP_TIMEOUT_SECS: u64 = 8;
+
     pub fn sanitize_game_title(title: &str) -> String {
         let mut s: String = title
             .chars()
@@ -1443,6 +1463,28 @@ pub mod music_pure {
             assert!(!is_valid_music_url("https://example.com/a b.mp3"));
             assert!(!is_valid_music_url("https://example.com/a.mp3\n--exec"));
             assert!(!is_valid_music_url("javascript:alert(1)"));
+        }
+
+        #[test]
+        fn bot_block_error_matches_youtube_block_phrases() {
+            assert!(is_bot_block_error(
+                "ERROR: Sign in to confirm you're not a bot. Use --cookies-from-browser or --cookies"
+            ));
+            assert!(is_bot_block_error(
+                "ERROR: HTTP Error 429: Too Many Requests"
+            ));
+            assert!(is_bot_block_error("ERROR: HTTP Error 403: Forbidden"));
+            assert!(is_bot_block_error("too many requests, retrying in 5s"));
+            assert!(!is_bot_block_error("ERROR: Video unavailable"));
+            assert!(!is_bot_block_error(
+                "ERROR: Unable to download video data: HTTP Error 404"
+            ));
+            assert!(!is_bot_block_error(""));
+        }
+
+        #[test]
+        fn ytdlp_timeout_is_within_the_8_to_10s_budget() {
+            assert!((8..=10).contains(&YTDLP_TIMEOUT_SECS));
         }
 
         #[test]
@@ -2713,8 +2755,11 @@ pub mod session_pure {
     /// window is destroyed (code None) — the tray host must stay
     /// alive to recreate the window on game exit. An explicit exit
     /// (code Some, e.g. the tray "Quit" item) goes through.
-    pub fn should_prevent_exit(exit_code: Option<i32>) -> bool {
-        exit_code.is_none()
+    /// v0.2.11: the same exit is a real quit when NO game is running
+    /// (Alt+F4 / window close — the window is borderless, so this is
+    /// the only visible way out besides tray / Settings / Power).
+    pub fn should_prevent_exit(exit_code: Option<i32>, game_running: bool) -> bool {
+        exit_code.is_none() && game_running
     }
 
     #[cfg(test)]
@@ -2737,10 +2782,18 @@ pub mod session_pure {
         }
 
         #[test]
-        fn exit_request_prevented_only_for_window_lifecycle_exits() {
-            assert!(should_prevent_exit(None));
-            assert!(!should_prevent_exit(Some(0)));
-            assert!(!should_prevent_exit(Some(1)));
+        fn exit_request_prevented_only_while_a_game_runs() {
+            // code None + game running: managed launch destroyed the
+            // window — the host must stay alive in the tray.
+            assert!(should_prevent_exit(None, true));
+            // code None + NO game running: Alt+F4 / window close — a
+            // real quit (v0.2.11).
+            assert!(!should_prevent_exit(None, false));
+            // code Some: explicit exit (tray "Quit", Settings / Power
+            // "Exit Launcher") — always goes through.
+            assert!(!should_prevent_exit(Some(0), true));
+            assert!(!should_prevent_exit(Some(0), false));
+            assert!(!should_prevent_exit(Some(1), true));
         }
     }
 }

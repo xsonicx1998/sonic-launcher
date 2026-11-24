@@ -1,1 +1,3 @@
-dist/sfx/
+# dist/sfx/ is intentionally TRACKED, not ignored: the launcher needs
+# these PS5 sound files at runtime, and a fresh clone without them
+# would start up silent. (An earlier .gitignore listed dist/sfx/.)

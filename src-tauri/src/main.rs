@@ -26,6 +26,13 @@
 //! - Phase 5: `get_setting` / `set_setting`, `get_playtime`,
 //!   `list_playtime`, `start_playtime_session` / `end_playtime_session`,
 //!   `is_process_running` (playtime.rs)
+//! - v0.2.11: `quit_launcher` (exit from tray / Settings / Power /
+//!   Alt+F4 when no game runs), `cancel_theme_music` + `is_youtube_blocked`
+//!   (yt-dlp kill-on-change + session circuit-breaker, music.rs),
+//!   `clear_art_music_cache` (art.rs), `get_last_played` (playtime.rs).
+//!   Theme music is OFF by default (opt-in); the Settings panel was
+//!   restructured into General / Library & Artwork / Audio / About
+//!   with zero dead clicks.
 //!
 //! The UI is the v33 PS5-style single-file preview (dist/index.html).
 
@@ -205,17 +212,39 @@ fn get_sfx_dir(app: AppHandle) -> Result<String, String> {
     Ok(dir.to_string_lossy().into_owned())
 }
 
-/// Open the SFX folder in Windows Explorer.
-#[tauri::command]
-fn open_sfx_folder(app: AppHandle) -> Result<(), String> {
-    let dir = get_sfx_dir(app)?;
-    open::that(dir).map_err(|e| format!("cannot open sfx folder: {e}"))?;
-    Ok(())
-}
-
 #[tauri::command]
 fn get_app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
+}
+
+/// Quit the launcher entirely (v0.2.11 — the discoverable exit:
+/// tray menu "Quit", Settings → About → "Exit Launcher", and the
+/// Power menu "Exit Sonic Launcher" all call this; Alt+F4 / window
+/// close also ends here when no game is running, via the run
+/// callback letting the exit through).
+#[tauri::command]
+fn quit_launcher(app: AppHandle) {
+    app.exit(0);
+}
+
+/// Kill the yt-dlp child currently running, if any — the frontend
+/// calls this when the user selects another game (kill-on-change).
+#[tauri::command]
+fn cancel_theme_music() {
+    music::cancel_ytdlp();
+}
+
+/// Whether YouTube lookups are circuit-broken for this session
+/// (bot-block detected) — the frontend skips the YouTube steps.
+#[tauri::command]
+fn is_youtube_blocked() -> bool {
+    music::is_youtube_blocked()
+}
+
+/// Clear the cached art + theme music (Settings → About).
+#[tauri::command]
+fn clear_art_music_cache(app: AppHandle) -> Result<String, String> {
+    art::clear_art_music_cache(&app)
 }
 
 #[tauri::command]
@@ -379,6 +408,14 @@ fn get_playtime(app: AppHandle, game_key: String) -> i64 {
     playtime::get_playtime(&app, &game_key).unwrap_or(0)
 }
 
+/// Unix time of the last finished play session for a game, or 0 when
+/// never played (v0.2.11 — the hero "Last played ..." line only shows
+/// when this is non-zero).
+#[tauri::command]
+fn get_last_played(app: AppHandle, game_key: String) -> i64 {
+    playtime::get_last_played(&app, &game_key)
+}
+
 #[tauri::command]
 fn list_playtime(app: AppHandle) -> Vec<db::PlaytimeTotal> {
     playtime::list_playtime(&app).unwrap_or_default()
@@ -390,11 +427,16 @@ fn start_playtime_session(
     game_key: String,
     game_name: String,
 ) -> Result<i64, String> {
+    // Window-stays-open launch path (setting OFF): a game is now
+    // running, so Alt+F4 / window close must NOT quit the app — the
+    // v0.2.10 tray-host behaviour holds until the session ends.
+    session::set_game_running(true);
     playtime::start_session(&app, &game_key, &game_name)
 }
 
 #[tauri::command]
 fn end_playtime_session(app: AppHandle, session_id: i64) -> Result<(), String> {
+    session::set_game_running(false);
     playtime::end_session(&app, session_id)
 }
 
@@ -440,6 +482,16 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            // Close any play sessions left open by a previous run
+            // (tray quit or crash mid-game) before anything else
+            // reads playtime — stale sessions credit zero minutes.
+            match playtime::close_stale_sessions(app.handle()) {
+                Ok(closed) if closed > 0 => {
+                    eprintln!("closed {closed} stale playtime session(s) from a previous run");
+                }
+                Ok(_) => {}
+                Err(e) => eprintln!("could not close stale playtime sessions: {e}"),
+            }
             // System tray: the ~4 MB host stays here while a game runs
             // and the window is destroyed. Clicking the icon brings
             // the launcher window back (recreating it if needed).
@@ -470,6 +522,11 @@ fn main() {
                     .icon(icon.clone())
                     .menu(&menu)
                     .tooltip("Sonic Launcher")
+                    // Left-click shows the window, right-click shows the
+                    // menu. The builder default is true (menu on left
+                    // click too), which used to open the menu AND show
+                    // the window on every click.
+                    .show_menu_on_left_click(false)
                     .on_menu_event(|app, event| {
                         if event.id() == "quit" {
                             app.exit(0);
@@ -479,9 +536,25 @@ fn main() {
                         }
                     })
                     .on_tray_icon_event(|tray, event| {
-                        if let tauri::tray::TrayIconEvent::Click { .. } = event {
+                        // Left-button release ONLY: any click (incl.
+                        // right-click, which also opens the menu) used
+                        // to show the window over the running game.
+                        // Field names verified against the vendored
+                        // tauri 2.12.7 crate sources on this VM.
+                        if let tauri::tray::TrayIconEvent::Click {
+                            button: tauri::tray::MouseButton::Left,
+                            button_state: tauri::tray::MouseButtonState::Up,
+                            ..
+                        } = event
+                        {
                             let handle = tray.app_handle().clone();
-                            let _ = session::show_or_recreate_window(&handle);
+                            // Never build a window on the main thread:
+                            // the tray event arrives there, and Tauri
+                            // warns that creating windows there can
+                            // deadlock on Windows.
+                            std::thread::spawn(move || {
+                                let _ = session::show_or_recreate_window(&handle);
+                            });
                         }
                     })
                     .build(app)?;
@@ -517,7 +590,10 @@ fn main() {
             download_theme_music_url,
             download_khinsider_theme,
             get_sfx_dir,
-            open_sfx_folder,
+            quit_launcher,
+            cancel_theme_music,
+            is_youtube_blocked,
+            clear_art_music_cache,
             pick_ambient_file,
             get_app_version,
             get_game_music,
@@ -535,6 +611,7 @@ fn main() {
             get_setting,
             set_setting,
             get_playtime,
+            get_last_played,
             list_playtime,
             start_playtime_session,
             end_playtime_session,
@@ -553,8 +630,15 @@ fn main() {
             // persisted fail-soft notice surfaces after the
             // recreate. Only an explicit exit request (code Some,
             // e.g. the tray "Quit" item calling app.exit) may end it.
+            //
+            // v0.2.11: the same exit is a real quit when NO game is
+            // running (Alt+F4 / window close — the window is
+            // borderless, so this is the only visible way out besides
+            // tray / Settings / Power). The game-running flag is set
+            // on launch (managed path + start_playtime_session) and
+            // cleared on game exit.
             tauri::RunEvent::ExitRequested { api, code, .. } => {
-                if session::should_prevent_exit(code) {
+                if session::should_prevent_exit(code, session::is_game_running()) {
                     api.prevent_exit();
                 }
             }

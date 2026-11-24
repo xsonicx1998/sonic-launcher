@@ -69,6 +69,9 @@ const invokeLog = [];
 let fastExitHandler = null; // set by the launch-fast-exit listener (v0.2.7)
 let mockProcessRunning = false; // is_process_running result (v0.2.7)
 let mockSettings = { music_enabled: '1', music_volume: '30', sfx_enabled: '1', sfx_volume: '80', skip_boot: '0', ambient_music_path: '' };
+let mockPlaytimeMinutes = 0; // get_playtime result (v0.2.11)
+let mockLastPlayed = 0; // get_last_played result, unix seconds (v0.2.11)
+let mockYoutubeBlocked = false; // is_youtube_blocked result (v0.2.11)
 let mockSearchResults = {}; // key: source|fallback -> array of candidates
 let mockKhinsider = null;   // null = not found, string = cached path
 let mockCachedMusic = null; // null = none
@@ -87,7 +90,12 @@ global.window.__TAURI__ = {
         case 'begin_managed_launch': return Promise.resolve(null);
         case 'start_playtime_session': return Promise.resolve(1);
         case 'end_playtime_session': return Promise.resolve(null);
-        case 'get_playtime': return Promise.resolve(0);
+        case 'get_playtime': return Promise.resolve(mockPlaytimeMinutes);
+        case 'get_last_played': return Promise.resolve(mockLastPlayed);
+        case 'is_youtube_blocked': return Promise.resolve(mockYoutubeBlocked);
+        case 'cancel_theme_music': return Promise.resolve(null);
+        case 'quit_launcher': return Promise.resolve(null);
+        case 'clear_art_music_cache': return Promise.resolve('Cleared 3 art files and 1 music files');
         case 'scan_folders': return Promise.resolve([]);
         case 'list_scan_folders': return Promise.resolve([]);
         case 'launch_game': return Promise.resolve(null);
@@ -122,16 +130,21 @@ global.window.__TAURI__ = {
     },
   },
 };
-// fetch mock: bundled sfx files exist as mp3; app-data files do not (unless flagged)
+// fetch mock: bundled sfx files exist as .mp3 for the 7 shipped stems only;
+// app-data files exist only when flagged. v0.2.11: the lazy loader hardcodes
+// .mp3, so any other extension must 404.
 let appDataSfx = new Set();
+const fetchLog = [];
+const SFX_KNOWN_STEMS = ['boot', 'nav', 'select', 'launch', 'back', 'cc_open', 'ambient'];
 global.fetch = (url) => {
+  fetchLog.push(url);
   const isAppData = url.includes('com.sonic.launcher');
   const stem = (url.match(/\/([^\/]+)\.(mp3|wav|ogg|m4a)$/) || [])[1];
   if (isAppData) {
     return Promise.resolve({ ok: appDataSfx.has(stem), arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) });
   }
-  // bundled dist/sfx/<stem>.mp3 exists
-  return Promise.resolve({ ok: url.endsWith('.mp3'), arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) });
+  // bundled dist/sfx/<stem>.mp3 exists only for the shipped stems
+  return Promise.resolve({ ok: url.endsWith('.mp3') && SFX_KNOWN_STEMS.includes(stem), arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) });
 };
 // AudioContext mock
 class FakeGain { constructor(){ this.gain = { value: 0, cancelScheduledValues(){}, setValueAtTime(){}, linearRampToValueAtTime(){} }; } connect(){} }
@@ -162,17 +175,19 @@ function extractFn(src, name) {
 }
 
 const NEEDED_FNS = [
-  'tauriCore', 'getSetting', 'themeAudioEl', 'themeOk', 'pickThemeResult',
-  'tryThemeSearch', 'tryKhinsider', 'playCachedMusic', 'playThemeSrc',
+  'tauriCore', 'getSetting', 'themeAudioEl', 'themeOk', 'fmtDur', 'pickThemeResult',
+  'changeThemeMusic', 'tryThemeSearch', 'tryKhinsider', 'playCachedMusic', 'playThemeSrc',
   'stopThemeMusic', 'playAmbientIfSet', 'scheduleThemeMusic',
-  'sfxAudioContext', 'sfxSetVolume', 'sfxPreload', 'sfxTryUrls', 'playSfx',
-  'playBootSfx', 'fadeAudioParam', 'startPs5Ambient', 'stopPs5Ambient',
+  'sfxAudioContext', 'sfxSetVolume', 'sfxPreload', 'sfxTryUrls', 'sfxDir', 'ensureSfx', 'playSfx',
+  'playSfxBuffer', 'playBootSfx', 'fadeAudioParam', 'startPs5Ambient', 'startPs5AmbientBuffer', 'stopPs5Ambient',
   'resumeHomeAudio', 'enterHome', 'spawnParticles', 'bootSeq', 'skipBoot',
   'isBootVisible', 'tileFocusedHTML', 'tilePlainHTML', 'tileIconHTML', 'escHtml', 'showToast',
   'toggleGameMenu', 'buildGameMenu', 'hideGameMenu',
   'openSearch', 'closeSearch', 'searchGameMatches', 'renderSearchResults',
   'pickSearchResult', 'toggleThemePlayback', 'applyRealArt', 'updateGameLogo',
-  'baseTileFields', 'placeholderArt', 'mapUnifiedGame',
+  'baseTileFields', 'placeholderArt', 'mapUnifiedGame', 'titleCaseName', 'renderGameStats',
+  'exitLauncher', 'openLibraryGrid', 'closeLibraryGrid', 'pickLibraryGridGame',
+  'saveReduceAnimations', 'applyReduceAnimations', 'clearArtMusicCache', 'tickClock',
   'saveAutoFetchArt', 'copySgdbLink',
   'pickCoverArt', 'setCoverArtAppid', 'pasteCoverArtUrl', 'retryArt',
   'listenFastExit', 'showFastExitNotice', 'hideFastExitNotice', 'fastExitChangeExe',
@@ -205,7 +220,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function main() {
   // Globals the extracted functions need (declared here, in main's scope,
   // so eval'd function declarations resolve them).
-  var themeAudio, themeDebounce, themeAutoTried, GAMES, sel, tileEls;
+  var themeAudio, themeDebounce, themeAutoTried, themeGen = 0, GAMES, sel, tileEls;
   var toastTimer = null;
   var bgSlides = [];
   var bgStack = getEl('bgStack'), currentBgEl = null, bgZ = 1; // buildBgSlides / setHeroBg
@@ -217,8 +232,8 @@ async function main() {
   var renderCalls = 0;
   function render(){ renderCalls++; }
   var SFX_STEMS = ['boot', 'nav', 'select', 'launch', 'back', 'cc_open', 'ambient'];
-  var SFX_EXTS = ['mp3', 'wav', 'ogg', 'm4a'];
-  var sfxCtx, sfxGain, sfxBuffers = {}, sfxEnabled = true, sfxVolume = 0.8;
+  var sfxCtx, sfxGain, sfxBuffers = {}, sfxTried = {}, sfxEnabled = true, sfxVolume = 0.8;
+  var sfxDirPromise = null;
   var ambientSrc, ambientGain, ambientPlaying = false;
   var bootToken = 0;
   var THEME_EXCLUDED = ['cover','remix','piano','1 hour','1hr','live','extended','loop','8d','slowed','reverb'];
@@ -257,7 +272,7 @@ async function main() {
   sel = 0;
   themeAudio = makeEl('audio');
   themeAudio.volume = 0.3;
-  tileEls = [makeEl('store'), makeEl('tile0')];
+  tileEls = [makeEl('tile0'), makeEl('tile1')];
 
   console.log('Music chain order:');
   await check('YouTube theme -> OST -> KHInsider -> SoundCloud -> ambient', async () => {
@@ -268,7 +283,7 @@ async function main() {
     mockSettings.ambient_music_path = '';
     themeAutoTried = {};
     scheduleThemeMusic();
-    await sleep(900);
+    await sleep(1200);
     const cmds = invokeLog.map((c) => c.cmd + ':' + JSON.stringify(c.args || {}));
     const seq = invokeLog.map((c) => c.cmd);
     // ensure_ytdlp first, then three search_theme_music calls, then khinsider, then soundcloud search
@@ -295,7 +310,7 @@ async function main() {
     mockKhinsider = 'C:\\music\\hollow-knight.mp3';
     themeAutoTried = {};
     scheduleThemeMusic();
-    await sleep(900);
+    await sleep(1200);
     const searches = invokeLog.filter((c) => c.cmd === 'search_theme_music');
     assert.strictEqual(searches.length, 2, 'expected 2 search calls (youtube only), got ' + searches.length);
     assert(!invokeLog.some((c) => c.cmd === 'search_theme_music' && c.args.source === 'soundcloud'), 'soundcloud should not run after a khinsider hit');
@@ -327,18 +342,43 @@ async function main() {
   });
 
   console.log('SFX engine:');
-  await check('sfxPreload resolves app-data first, then bundled dist/sfx/', async () => {
+  await check('sfxPreload loads settings only — no audio fetched at startup (v0.2.11)', async () => {
     sfxBuffers = {};
-    appDataSfx = new Set(['nav']); // user overrode nav in app-data
+    sfxTried = {};
+    fetchLog.length = 0;
     sfxPreload();
     await sleep(200);
-    assert(sfxBuffers['nav'], 'nav not loaded');
-    assert(sfxBuffers['boot'], 'boot (bundled) not loaded');
-    assert(sfxBuffers['ambient'], 'ambient (bundled) not loaded');
-    assert(Object.keys(sfxBuffers).length === 7, 'expected 7 stems, got ' + Object.keys(sfxBuffers).length);
+    assert.strictEqual(Object.keys(sfxBuffers).length, 0, 'no stem should be decoded at startup, got: ' + Object.keys(sfxBuffers).join(','));
+    assert.strictEqual(fetchLog.length, 0, 'no audio should be fetched at startup, got: ' + fetchLog.join(', '));
+    assert.strictEqual(sfxEnabled, true, 'sfx should stay enabled');
   });
-  await check('playSfx is silent when a stem is missing (no throw)', async () => {
+  await check('playSfx lazy-loads on first use: app-data override wins, then bundled .mp3 only (v0.2.11)', async () => {
     sfxBuffers = {};
+    sfxTried = {};
+    appDataSfx = new Set(['nav']); // user overrode nav in app-data
+    fetchLog.length = 0;
+    playSfx('nav');
+    await sleep(200);
+    assert(sfxBuffers['nav'], 'nav not loaded on first use');
+    assert(!fetchLog.some((u) => u === 'sfx/nav.mp3'), 'app-data hit must not fall through to bundled: ' + fetchLog.join(', '));
+    playSfx('boot');
+    await sleep(200);
+    assert(sfxBuffers['boot'], 'boot (bundled) not loaded on first use');
+    assert(fetchLog.some((u) => u === 'sfx/boot.mp3'), 'bundled boot.mp3 should be fetched: ' + fetchLog.join(', '));
+    assert(fetchLog.every((u) => u.endsWith('.mp3')), 'only .mp3 may be fetched, got: ' + fetchLog.join(', '));
+    // Second use of the same stem must not fetch again.
+    fetchLog.length = 0;
+    playSfx('nav');
+    playSfx('boot');
+    await sleep(100);
+    assert.strictEqual(fetchLog.length, 0, 'cached stems must not re-fetch, got: ' + fetchLog.join(', '));
+  });
+  await check('playSfx is silent for a missing stem (no throw, no buffer)', async () => {
+    sfxBuffers = {};
+    sfxTried = {};
+    playSfx('nonexistent');
+    await sleep(200);
+    assert(!sfxBuffers['nonexistent'], 'missing stem must not produce a buffer');
     playSfx('nav');
     playSfx('boot');
   });
@@ -384,6 +424,28 @@ async function main() {
     GAMES = [{ key: 's3', row: 'Cyberpunk 2077', source: 'scan', scanId: 8, exePath: 'C:\\Games\\Cyberpunk 2077\\bin\\x64\\Cyberpunk2077.exe', confidence: 'high', hasOverride: false }];
     buildGameMenu();
     assert(!m.innerHTML.includes('Not sure this is the right file'), 'high-confidence game should not warn');
+  });
+  await check('Change Theme Music searches YouTube with all three args (gameName, fallback, source)', async () => {
+    GAMES = [{ key: 'g1', row: 'Hollow Knight', source: 'steam', appid: '367520', exePath: '' }];
+    sel = 0;
+    mockSearchResults = { 'youtube|0': [
+      { id: 'abc123', title: 'Hollow Knight Theme', duration_secs: 200, source: 'youtube' },
+      { id: 'def456', title: 'Hollow Knight OST', duration_secs: 180, source: 'youtube' },
+    ] };
+    invokeLog.length = 0;
+    const box = getEl('themeResults');
+    box.innerHTML = '';
+    changeThemeMusic();
+    await sleep(150);
+    const searches = invokeLog.filter((c) => c.cmd === 'search_theme_music');
+    assert.strictEqual(searches.length, 1, 'expected 1 search call, got ' + searches.length + ' :: ' + invokeLog.map((c) => c.cmd).join(','));
+    assert.strictEqual(searches[0].args.gameName, 'Hollow Knight', 'gameName wrong: ' + JSON.stringify(searches[0].args));
+    assert.strictEqual(searches[0].args.fallback, false, 'fallback must be false (standard theme query): ' + JSON.stringify(searches[0].args));
+    assert.strictEqual(searches[0].args.source, 'youtube', 'source must be youtube: ' + JSON.stringify(searches[0].args));
+    // The top-5 results are listed for the user to pick from.
+    assert.deepStrictEqual(window.__themeResults, mockSearchResults['youtube|0'], 'results not stored for pickThemeResult');
+    assert(box.innerHTML.includes('Hollow Knight Theme'), 'results not rendered: ' + box.innerHTML);
+    assert(!box.innerHTML.includes('Search failed'), 'search must not fail: ' + box.innerHTML);
   });
   await check('Search opens, filters by title, picks a result', async () => {
     GAMES = [{ key: 'dreams', row: 'Dreams' }, { key: 'astro', row: "Astro's Playroom", name: "ASTRO'S PLAYROOM" }, { key: 'blood', row: 'Bloodborne' }];
@@ -584,7 +646,7 @@ async function main() {
     const bgBefore = 'data:image/svg+xml;placeholder';
     GAMES = [{ key: 'scan-7', row: 'Hollow Knight', source: 'scan', scanId: 7, exePath: 'C:\\Games\\Hollow Knight\\Hollow Knight.exe', artIsIcon: false, img: 'data:image/svg+xml;tile', bg: bgBefore }];
     sel = 0;
-    tileEls = [makeEl('store'), makeEl('tile0')];
+    tileEls = [makeEl('tile0')];
     mockArt = { tile_data_uri: 'data:image/png;base64,AAA', tile_path: 'C:\\art\\scan-7-icon.png', hero_path: null, hero_data_uri: null, capsule_data_uri: 'data:image/png;base64,AAA', capsule_path: 'C:\\art\\scan-7-icon.png', logo_path: null, logo_data_uri: null, is_icon: true };
     invokeLog.length = 0;
     renderCalls = 0;
@@ -600,7 +662,7 @@ async function main() {
     assert.strictEqual(GAMES[0].artIsIcon, true, 'artIsIcon should be set');
     assert.strictEqual(GAMES[0].img, 'data:image/png;base64,AAA', 'tile should be the icon data URI');
     assert.strictEqual(GAMES[0].bg, bgBefore, 'hero must stay the gradient placeholder for icon games');
-    assert(tileEls[1].innerHTML.includes('object-fit:contain'), 'tile should re-render centered: ' + tileEls[1].innerHTML);
+    assert(tileEls[0].innerHTML.includes('object-fit:contain'), 'tile should re-render centered: ' + tileEls[0].innerHTML);
     assert.strictEqual(ci.src, 'data:image/png;base64,AAA', 'card image should be the icon');
     assert.strictEqual(ci.style.objectFit, 'contain', 'card image should use contain');
     assert(ci.parentElement.style.background.includes('#8B20FF'), 'card should sit on the gradient: ' + ci.parentElement.style.background);
@@ -609,7 +671,7 @@ async function main() {
   await check('applyRealArt still sets the hero for real cover art', async () => {
     GAMES = [{ key: 'scan-7', row: 'Hollow Knight', source: 'scan', scanId: 7, exePath: 'C:\\Games\\Hollow Knight\\Hollow Knight.exe', artIsIcon: false, img: 'data:image/svg+xml;tile', bg: 'data:image/svg+xml;placeholder' }];
     sel = 0;
-    tileEls = [makeEl('store'), makeEl('tile0')];
+    tileEls = [makeEl('tile0')];
     bgSlides = [makeEl('slide0')];
     mockArt = { tile_data_uri: 'data:image/jpeg;base64,BBB', tile_path: 'C:\\art\\scan-7-header.jpg', hero_path: 'C:\\art\\scan-7-hero.jpg', hero_data_uri: null, capsule_data_uri: 'data:image/jpeg;base64,CCC', capsule_path: 'C:\\art\\scan-7-capsule.jpg', logo_path: null, logo_data_uri: null, is_icon: false };
     renderCalls = 0;
@@ -618,14 +680,14 @@ async function main() {
     assert.strictEqual(GAMES[0].artIsIcon, false, 'artIsIcon should stay false for real art');
     assert.strictEqual(GAMES[0].bg, 'asset://localhost/C:/art/scan-7-hero.jpg', 'hero should be set from hero_path, got: ' + GAMES[0].bg);
     assert.strictEqual(renderCalls, 1, 'render should run when the hero arrives');
-    assert(tileEls[1].innerHTML.includes('object-fit:cover'), 'tile should stay full-bleed: ' + tileEls[1].innerHTML);
+    assert(tileEls[0].innerHTML.includes('object-fit:cover'), 'tile should stay full-bleed: ' + tileEls[0].innerHTML);
   });
 
   console.log('Three-asset Steam art (v0.2.8):');
   await check('tile uses the capsule first, 16:9 card keeps the header, hero unchanged', async () => {
     GAMES = [{ key: 'scan-7', row: 'Hollow Knight', source: 'scan', scanId: 7, exePath: 'C:\\Games\\Hollow Knight\\Hollow Knight.exe', artIsIcon: false, img: 'data:image/svg+xml;tile', bg: 'data:image/svg+xml;placeholder' }];
     sel = 0;
-    tileEls = [makeEl('store'), makeEl('tile0')];
+    tileEls = [makeEl('tile0')];
     bgSlides = [makeEl('slide0')];
     mockArt = { tile_data_uri: 'data:image/jpeg;base64,HEADER', tile_path: 'C:\\art\\scan-7-header.jpg', hero_path: 'C:\\art\\scan-7-hero.jpg', hero_data_uri: null, capsule_data_uri: 'data:image/jpeg;base64,CAPSULE', capsule_path: 'C:\\art\\scan-7-capsule.jpg', logo_path: null, logo_data_uri: null, is_icon: false };
     const ci = getEl('cardImg');
@@ -642,7 +704,7 @@ async function main() {
   await check('tile falls back to the header when the capsule is missing', async () => {
     GAMES = [{ key: 'scan-7', row: 'Hollow Knight', source: 'scan', scanId: 7, exePath: 'C:\\Games\\Hollow Knight\\Hollow Knight.exe', artIsIcon: false, img: 'data:image/svg+xml;tile', bg: 'data:image/svg+xml;placeholder' }];
     sel = 0;
-    tileEls = [makeEl('store'), makeEl('tile0')];
+    tileEls = [makeEl('tile0')];
     mockArt = { tile_data_uri: 'data:image/jpeg;base64,HEADER', tile_path: 'C:\\art\\scan-7-header.jpg', hero_path: null, hero_data_uri: null, capsule_data_uri: null, capsule_path: null, logo_path: null, logo_data_uri: null, is_icon: false };
     applyRealArt();
     await sleep(50);
@@ -652,7 +714,7 @@ async function main() {
   await check('logo shows above Play when present; text title hides on load', async () => {
     GAMES = [{ key: 'steam-367520', row: 'Hollow Knight', source: 'steam', appid: '367520', img: 'data:image/svg+xml;tile', bg: 'data:image/svg+xml;placeholder' }];
     sel = 0;
-    tileEls = [makeEl('store'), makeEl('tile0')];
+    tileEls = [makeEl('tile0')];
     mockArt = { tile_data_uri: 'data:image/jpeg;base64,HEADER', tile_path: 'C:\\art\\steam-367520-header.jpg', hero_path: null, hero_data_uri: null, capsule_data_uri: 'data:image/jpeg;base64,CAPSULE', capsule_path: 'C:\\art\\steam-367520-capsule.jpg', logo_data_uri: 'data:image/png;base64,LOGO', logo_path: 'C:\\art\\steam-367520-logo.png', is_icon: false };
     const img = getEl('gameLogoImg');
     const title = getEl('gameLogo');
@@ -671,7 +733,7 @@ async function main() {
   await check('text title stays when the game has no logo', async () => {
     GAMES = [{ key: 'scan-7', row: 'Hollow Knight', source: 'scan', scanId: 7, img: 'data:image/svg+xml;tile', bg: 'data:image/svg+xml;placeholder' }];
     sel = 0;
-    tileEls = [makeEl('store'), makeEl('tile0')];
+    tileEls = [makeEl('tile0')];
     mockArt = { tile_data_uri: 'data:image/jpeg;base64,HEADER', tile_path: 'C:\\art\\scan-7-header.jpg', hero_path: null, hero_data_uri: null, capsule_data_uri: 'data:image/jpeg;base64,CAPSULE', capsule_path: 'C:\\art\\scan-7-capsule.jpg', logo_path: null, logo_data_uri: null, is_icon: false };
     const img = getEl('gameLogoImg');
     const title = getEl('gameLogo');
@@ -686,7 +748,7 @@ async function main() {
   await check('logo load error falls back to the text title', async () => {
     GAMES = [{ key: 'steam-367520', row: 'Hollow Knight', source: 'steam', appid: '367520', img: 'data:image/svg+xml;tile', bg: 'data:image/svg+xml;placeholder' }];
     sel = 0;
-    tileEls = [makeEl('store'), makeEl('tile0')];
+    tileEls = [makeEl('tile0')];
     mockArt = { tile_data_uri: 'data:image/jpeg;base64,HEADER', tile_path: 'C:\\art\\steam-367520-header.jpg', hero_path: null, hero_data_uri: null, capsule_data_uri: 'data:image/jpeg;base64,CAPSULE', capsule_path: 'C:\\art\\steam-367520-capsule.jpg', logo_data_uri: 'data:image/png;base64,LOGO', logo_path: 'C:\\art\\steam-367520-logo.png', is_icon: false };
     const img = getEl('gameLogoImg');
     const title = getEl('gameLogo');
@@ -814,7 +876,7 @@ async function main() {
     mockCachedMusic = null;
     GAMES = [{ key: 'seed', row: 'Seed', source: 'scan' }];
     sel = 0;
-    tileEls = [makeEl('store'), makeEl('tile0')];
+    tileEls = [makeEl('tile0')];
     refreshGames();
     await sleep(50);
     assert.strictEqual(GAMES.length, 0, 'library should be empty, got ' + GAMES.length);
@@ -845,7 +907,7 @@ async function main() {
     useRealSelectGame = true;
     GAMES = [];
     sel = 0;
-    tileEls = [makeEl('store'), makeEl('tile0')];
+    tileEls = [makeEl('tile0')];
     selectGame(0);
     assert.strictEqual(sel, -1, 'sel should be -1 for an empty library');
     assert.strictEqual(getEl('emptyState').style.display, 'block', 'empty state should show');
@@ -864,7 +926,7 @@ async function main() {
   await check('boot skips when the window was recreated after a game', async () => {
     GAMES = [{ key: 'scan-7', row: 'Hollow Knight', source: 'scan', img: 'x', bg: 'y' }];
     sel = 0;
-    tileEls = [makeEl('store'), makeEl('tile0')];
+    tileEls = [makeEl('tile0')];
     global.localStorage.setItem('sonic-launcher-recreated', '1');
     const b = getEl('boot');
     b.style.display = 'flex';
@@ -968,6 +1030,278 @@ async function main() {
     await sleep(50);
     assert.strictEqual(n.style.display, 'none', 'no notice when none is pending');
     useRealSelectGame = false; useRealRender = false; useRealRefreshGames = false;
+  });
+
+  console.log('v0.2.11: fonts, exit, zero dead clicks, logo, performance:');
+  await check('static page: system fonts only, no Google Fonts / Inter / Noto, weights 300/400/600 only', async () => {
+    assert(!html.includes('fonts.googleapis'), 'Google Fonts link still present');
+    assert(!html.includes("'Inter'"), 'Inter still in the font stack');
+    assert(!html.includes('Noto Sans Arabic'), 'Noto Sans Arabic still in the font stack');
+    assert(html.includes("font-family:'Segoe UI Variable Text','Segoe UI Variable','Segoe UI',sans-serif"), 'missing UI text stack');
+    assert(html.includes("font-family:'Segoe UI Variable Display','Segoe UI Light','Segoe UI',sans-serif"), 'missing title stack');
+    assert(!html.includes('font-weight:500'), 'font-weight 500 still present (Win10 Segoe UI has no 500)');
+    assert(!html.includes('font-weight:800'), 'font-weight 800 still present (only 300/400/600 allowed)');
+  });
+  await check('static page: no PS Store tile, no Media tab, Exit in the top bar, clock ticks', async () => {
+    assert(!html.includes('PS<br>Store'), 'PS Store tile still in buildRow');
+    assert(!html.includes('>Media<'), 'Media tab still in the top bar');
+    assert(html.includes('exitLauncher()'), 'missing exitLauncher wiring');
+    assert(html.includes('setInterval(tickClock'), 'clock should tick on an interval');
+    assert(!html.includes('tileEls[sel+1]'), 'stale tileEls[sel+1] offset (Store tile is gone)');
+    assert(!html.includes('tileEls[i+1]'), 'stale tileEls[i+1] offset (Store tile is gone)');
+    assert(html.includes('tileEls[sel]'), 'selectGame should use tileEls[sel]');
+    assert(html.includes('tileEls[i]'), 'applyRealArt should use tileEls[i]');
+  });
+  await check('static page: Power menu is a working Exit only; no dead Sleep/Shut Down/Restart', async () => {
+    assert(!html.includes('selPower('), 'selPower still present');
+    assert(!html.includes('>Sleep<'), 'dead Sleep item still present');
+    assert(!html.includes('>Shut Down<'), 'dead Shut Down item still present');
+    assert(!html.includes('>Restart<'), 'dead Restart item still present');
+    assert(html.includes('Exit Sonic Launcher'), 'missing Exit Sonic Launcher item');
+  });
+  await check('static page: no dead Control-Centre cards or dock icons (Home + Power only)', async () => {
+    assert(!html.includes('newsCard'), 'fake news card still present');
+    assert(!html.includes('clipCard'), 'fake clip card still present');
+    assert(!html.includes('Customise'), 'dead Customise label still present');
+    assert(html.includes('data-label="Home"'), 'Home dock item missing');
+    assert(html.includes('data-label="Power"'), 'Power dock item missing');
+    assert(!html.includes('data-label="Library"'), 'dead Library dock item still present');
+    assert(!html.includes('data-label="Music"'), 'dead Music dock item still present');
+    assert(!html.includes('data-label="Notifications"'), 'dead Notifications dock item still present');
+    assert(!html.includes('data-label="Game Base"'), 'dead Game Base dock item still present');
+  });
+  await check('static page: Settings has four working sections, no decorative rows, no Open SFX Folder', async () => {
+    assert(!html.includes("User's Guide"), 'decorative User\'s Guide row still present');
+    assert(!html.includes('Accessibility'), 'decorative Accessibility row still present');
+    assert(!html.includes('System Software'), 'decorative System Software row still present');
+    assert(!html.includes('Open SFX Folder'), 'Open SFX Folder button still present');
+    assert(!html.includes('openSfxFolder'), 'openSfxFolder still referenced');
+    assert(!html.includes('Minimize launcher when'), 'old Minimize label still present');
+    assert(html.includes('GENERAL'), 'missing GENERAL section');
+    assert(html.includes('LIBRARY &amp; ARTWORK'), 'missing LIBRARY & ARTWORK section');
+    assert(html.includes('AUDIO'), 'missing AUDIO section');
+    assert(html.includes('ABOUT'), 'missing ABOUT section');
+    assert(html.includes('id="reduceAnimations"'), 'missing Reduce Animations toggle');
+    assert(html.includes('Close UI to tray while gaming'), 'missing renamed tray setting');
+    assert(html.includes('Frees ~150 MB RAM'), 'missing tray subtext');
+    assert(html.includes('Optional (for non-Steam exclusives)'), 'missing SGDB optional label');
+    assert(html.includes('Clear Art / Music Cache'), 'missing Clear Art / Music Cache button');
+    assert(html.includes('Exit Launcher'), 'missing Exit Launcher row');
+    assert(html.includes('id="musicEnabled"'), 'missing theme music toggle');
+  });
+  await check('static page: hero logo is left-bottom, Title Case 42-52px weight 300, scrim present', async () => {
+    assert(html.includes('object-position:left bottom'), 'logo should be object-position left bottom');
+    assert(html.includes('margin-bottom:24px'), 'logo should sit 24px above Play');
+    assert(html.includes('font-size:clamp(42px,3.2vw,52px)'), 'title should be 42-52px');
+    assert(html.includes('id="heroScrim"'), 'missing bottom-left scrim');
+    assert(html.includes('linear-gradient(to top right,rgba(0,0,0,.75),transparent 60%)'), 'scrim gradient wrong');
+    assert(!baseTileFields.toString().includes('.toUpperCase()'), 'baseTileFields must not uppercase the title');
+  });
+  await check('static page: SFX lazy-loads a single .mp3; music chain has cancel + breaker + 700ms', async () => {
+    assert(!html.includes('SFX_EXTS'), 'SFX_EXTS probe list still present');
+    assert(html.includes('ensureSfx'), 'missing lazy SFX loader');
+    assert(html.includes("'sfx/' + name + '.mp3'"), 'SFX should hardcode the single shipped .mp3');
+    assert(html.includes('cancel_theme_music'), 'missing kill-on-change invoke');
+    assert(html.includes('is_youtube_blocked'), 'missing circuit-breaker invoke');
+    assert(html.includes('themeGen'), 'missing music generation token');
+    assert(html.includes("getSetting('music_enabled', '0')"), 'theme music should default OFF');
+    assert(html.includes('}, 700);'), 'debounce should be 700ms');
+    assert(html.includes("invoke('quit_launcher')"), 'missing quit_launcher invoke');
+    assert(html.includes("invoke('get_last_played'"), 'missing get_last_played invoke');
+    assert(html.includes("invoke('clear_art_music_cache')"), 'missing clear_art_music_cache invoke');
+    assert(html.includes('reduce-animations'), 'missing reduce-animations rules');
+    assert(html.includes('id="libraryGrid"'), 'missing Library grid overlay');
+    assert(html.includes('function renderGameStats'), 'missing renderGameStats');
+    assert(!html.includes("g.hours + '  •  Last played ' + g.last"), 'old unconditional stats line still present');
+  });
+  await check('titleCaseName keeps acronyms, title-cases ALL-CAPS, passes natural case through', async () => {
+    assert.strictEqual(titleCaseName('CYBERPUNK 2077'), 'Cyberpunk 2077');
+    assert.strictEqual(titleCaseName('GRAND THEFT AUTO V'), 'Grand Theft Auto V');
+    assert.strictEqual(titleCaseName('GTA V'), 'GTA V', 'GTA V must never become Gta V');
+    assert.strictEqual(titleCaseName('RDR2'), 'RDR2');
+    assert.strictEqual(titleCaseName("BALDUR'S GATE 3"), "Baldur's Gate 3");
+    assert.strictEqual(titleCaseName('HADES II'), 'Hades II');
+    assert.strictEqual(titleCaseName('KINGDOM COME: DELIVERANCE II'), 'Kingdom Come: Deliverance II');
+    assert.strictEqual(titleCaseName('Hollow Knight'), 'Hollow Knight', 'natural case must pass through');
+    assert.strictEqual(titleCaseName('Grand Theft Auto V'), 'Grand Theft Auto V');
+    assert.strictEqual(titleCaseName(''), 'Unknown');
+  });
+  await check('baseTileFields: Title Case logo, no source label in tag/meta', async () => {
+    const g = baseTileFields('Cyberpunk 2077', '', '');
+    assert.strictEqual(g.name, 'Cyberpunk 2077', 'name should stay as-is');
+    assert(g.logo.includes('Cyberpunk 2077'), 'logo should show the title: ' + g.logo);
+    assert(!g.logo.includes('CYBERPUNK'), 'logo must not be ALL CAPS: ' + g.logo);
+    assert(g.logo.includes('font-weight:300'), 'logo should be weight 300: ' + g.logo);
+    assert(g.logo.includes('letter-spacing:-0.02em'), 'logo should use -0.02em tracking: ' + g.logo);
+    assert.strictEqual(g.tag, '', 'tag should be empty (no source label)');
+    assert.strictEqual(g.meta, '', 'meta should be empty (no source label)');
+    const u = { key: 'scan-7', name: 'Hollow Knight', source: 'scan', appid: null, exe_path: 'C:\\Games\\Hollow Knight\\Hollow Knight.exe', launch_uri: null, folder: 'C:\\Games\\Hollow Knight', confidence: 'high', pick_source: 'name', has_override: false, art_failed: false, art_is_icon: false };
+    const gu = mapUnifiedGame(u);
+    assert.strictEqual(gu.tag, '', 'scan games must not show a "scan" tag');
+    assert.strictEqual(gu.meta, '', 'scan games must not show a "scan" meta');
+    assert(gu.logo.includes('Hollow Knight'), 'unified logo should be Title Case: ' + gu.logo);
+  });
+  await check('renderGameStats shows only real history (no dashes)', async () => {
+    const el = getEl('gameStats');
+    renderGameStats({ hours: '\u2014', last: '\u2014' });
+    assert.strictEqual(el.textContent, '', 'no history should mean an empty line, got: ' + el.textContent);
+    renderGameStats({ hours: '2 hours', last: '\u2014' });
+    assert.strictEqual(el.textContent, '2 hours', 'hours only, got: ' + el.textContent);
+    renderGameStats({ hours: '\u2014', last: 'Nov 24, 2026' });
+    assert.strictEqual(el.textContent, 'Last played Nov 24, 2026', 'last only, got: ' + el.textContent);
+    renderGameStats({ hours: '2 hours', last: 'Nov 24, 2026' });
+    assert.strictEqual(el.textContent, '2 hours  \u2022  Last played Nov 24, 2026', 'both, got: ' + el.textContent);
+  });
+  await check('loadRealPlaytime fills hours and the real last-played date', async () => {
+    mockPlaytimeMinutes = 125;
+    mockLastPlayed = 1795560000; // ~Nov 24, 2026
+    GAMES = [{ key: 'g1', row: 'Hollow Knight', source: 'steam' }];
+    sel = 0;
+    invokeLog.length = 0;
+    loadRealPlaytime();
+    await sleep(150);
+    assert(invokeLog.some((c) => c.cmd === 'get_playtime'), 'should ask for playtime');
+    assert(invokeLog.some((c) => c.cmd === 'get_last_played'), 'should ask for the last-played date');
+    assert.strictEqual(GAMES[0].hours, '2 hours', 'hours should be "2 hours", got: ' + GAMES[0].hours);
+    assert(GAMES[0].last.includes('2026'), 'last should carry the year, got: ' + GAMES[0].last);
+    const txt = getEl('gameStats').textContent;
+    assert(txt.includes('2 hours') && txt.includes('Last played '), 'stats line should show both, got: ' + txt);
+    mockPlaytimeMinutes = 0;
+    mockLastPlayed = 0;
+  });
+  await check('exitLauncher invokes quit_launcher', async () => {
+    invokeLog.length = 0;
+    exitLauncher();
+    await sleep(50);
+    assert(invokeLog.some((c) => c.cmd === 'quit_launcher'), 'quit_launcher should be invoked, got: ' + invokeLog.map((c) => c.cmd).join(','));
+  });
+  await check('Library tile grid opens, lists all games, picks one and closes', async () => {
+    GAMES = [
+      { key: 'g1', row: 'Hollow Knight', img: 'data:image/jpeg;base64,A', artIsIcon: false },
+      { key: 'g2', row: 'Celeste', img: 'data:image/png;base64,B', artIsIcon: true },
+    ];
+    sel = 0;
+    const grid = getEl('libraryGrid');
+    const items = getEl('libraryGridItems');
+    grid.style.display = 'none';
+    openLibraryGrid();
+    assert.strictEqual(grid.style.display, 'block', 'grid did not open');
+    assert(items.innerHTML.includes('Hollow Knight'), 'grid should list Hollow Knight: ' + items.innerHTML);
+    assert(items.innerHTML.includes('Celeste'), 'grid should list Celeste');
+    assert(items.innerHTML.includes('linear-gradient(135deg,#8B20FF'), 'icon games should keep the gradient in the grid');
+    closeLibraryGrid();
+    assert.strictEqual(grid.style.display, 'none', 'grid did not close');
+    openLibraryGrid();
+    selectGameCalls.length = 0;
+    pickLibraryGridGame(1);
+    assert.strictEqual(grid.style.display, 'none', 'grid should close after a pick');
+    assert.deepStrictEqual(selectGameCalls, [1], 'pick should select game 1');
+  });
+  await check('Reduce Animations toggle writes the setting and toggles the body class', async () => {
+    delete mockSettings.reduce_animations;
+    applyReduceAnimations(true);
+    assert(document.body.classList.contains('reduce-animations'), 'class should be set');
+    applyReduceAnimations(false);
+    assert(!document.body.classList.contains('reduce-animations'), 'class should clear');
+    saveReduceAnimations({ checked: true });
+    assert.strictEqual(mockSettings.reduce_animations, '1', 'check should write 1');
+    assert(document.body.classList.contains('reduce-animations'), 'class should be set by the toggle');
+    saveReduceAnimations({ checked: false });
+    assert.strictEqual(mockSettings.reduce_animations, '0', 'uncheck should write 0');
+    assert(!document.body.classList.contains('reduce-animations'), 'class should clear on uncheck');
+  });
+  await check('Clear Art / Music Cache invokes the backend and refreshes', async () => {
+    invokeLog.length = 0;
+    refreshGamesCalls = 0;
+    getEl('toast').textContent = '';
+    clearArtMusicCache();
+    await sleep(50);
+    assert(invokeLog.some((c) => c.cmd === 'clear_art_music_cache'), 'clear_art_music_cache should be invoked');
+    assert.strictEqual(refreshGamesCalls, 1, 'library should refresh after clearing');
+    assert(getEl('toast').textContent.includes('Cleared'), 'toast should confirm the clear, got: ' + getEl('toast').textContent);
+  });
+  await check('theme music is OFF by default: unset setting runs no chain', async () => {
+    GAMES = [{ key: 'g1', row: 'Hollow Knight', source: 'steam', appid: '367520' }];
+    sel = 0;
+    invokeLog.length = 0;
+    mockCachedMusic = null;
+    mockSearchResults = {};
+    mockKhinsider = null;
+    themeAutoTried = {};
+    delete mockSettings.music_enabled; // never set -> fallback '0'
+    scheduleThemeMusic();
+    await sleep(1200);
+    assert(invokeLog.some((c) => c.cmd === 'cancel_theme_music'), 'kill-on-change should still fire');
+    assert(!invokeLog.some((c) => c.cmd === 'ensure_ytdlp'), 'no yt-dlp should spawn while theme music is off, got: ' + invokeLog.map((c) => c.cmd).join(','));
+    assert(!invokeLog.some((c) => c.cmd === 'search_theme_music'), 'no search should run while theme music is off');
+    mockSettings.music_enabled = '1';
+  });
+  await check('selection change kills the running yt-dlp child (cancel_theme_music)', async () => {
+    GAMES = [{ key: 'g1', row: 'Hollow Knight', source: 'steam', appid: '367520' }];
+    sel = 0;
+    mockSettings.music_enabled = '0'; // chain stops after the debounce; only the cancel matters here
+    invokeLog.length = 0;
+    scheduleThemeMusic();
+    scheduleThemeMusic();
+    const cancels = invokeLog.filter((c) => c.cmd === 'cancel_theme_music');
+    assert.strictEqual(cancels.length, 2, 'each schedule should cancel the previous child, got ' + cancels.length);
+    await sleep(900);
+    assert(!invokeLog.some((c) => c.cmd === 'search_theme_music'), 'disabled chain must not search');
+    mockSettings.music_enabled = '1';
+  });
+  await check('circuit-breaker: blocked YouTube skips both YouTube searches', async () => {
+    GAMES = [{ key: 'g1', row: 'Hollow Knight', source: 'steam', appid: '367520' }];
+    sel = 0;
+    invokeLog.length = 0;
+    mockCachedMusic = null;
+    mockSearchResults = {};
+    mockKhinsider = null;
+    mockYoutubeBlocked = true;
+    themeAutoTried = {};
+    scheduleThemeMusic();
+    await sleep(1200);
+    assert(invokeLog.some((c) => c.cmd === 'is_youtube_blocked'), 'should ask the breaker');
+    const searches = invokeLog.filter((c) => c.cmd === 'search_theme_music');
+    assert.strictEqual(searches.length, 1, 'only the SoundCloud search should run, got ' + searches.length + ' :: ' + invokeLog.map((c) => c.cmd).join(','));
+    assert.strictEqual(searches[0].args.source, 'soundcloud', 'the one search should be SoundCloud');
+    assert(invokeLog.some((c) => c.cmd === 'download_khinsider_theme'), 'KHInsider should still run');
+    mockYoutubeBlocked = false;
+  });
+  await check('buildRow has no Store tile: game 0 is tileEls[0], Library tile is wired', async () => {
+    const g1 = baseTileFields('Hollow Knight', '', ''); g1.key = 'scan-7'; g1.source = 'scan';
+    const g2 = baseTileFields('Celeste', '', ''); g2.key = 'scan-8'; g2.source = 'scan';
+    GAMES = [g1, g2];
+    buildRow();
+    assert.strictEqual(tileEls.length, 4, 'expected 2 games + plus + Library, got ' + tileEls.length);
+    assert(tileEls[0].innerHTML.includes('data:image/svg+xml'), 'tileEls[0] should be the first game tile: ' + tileEls[0].innerHTML.slice(0, 120));
+    assert(!tileEls.some((t) => t.innerHTML.includes('PS<br>Store')), 'no tile should be the PS Store');
+    assert.strictEqual(typeof tileEls[3].onclick, 'function', 'Library tile should be clickable');
+    assert.strictEqual(typeof tileEls[2].onclick, 'function', 'plus tile should be clickable');
+  });
+  await check('selectGame (real) focuses tileEls[sel] with the Store tile gone', async () => {
+    useRealSelectGame = true; useRealRender = true;
+    const g1 = baseTileFields('Hollow Knight', '', ''); g1.key = 'scan-7'; g1.source = 'scan';
+    GAMES = [g1];
+    sel = -1;
+    tileEls = [makeEl('tile0')];
+    renderCalls = 0;
+    mockSettings.music_enabled = '0'; // keep the background chain quiet
+    selectGame(0);
+    assert.strictEqual(sel, 0, 'sel should be 0');
+    assert(tileEls[0].classList.contains('is-focused'), 'game tile should be focused');
+    assert(tileEls[0].innerHTML.includes('ps5-focus-ring'), 'focused tile should have the ring');
+    assert(renderCalls >= 1, 'render should run on select');
+    useRealSelectGame = false; useRealRender = false;
+    mockSettings.music_enabled = '1';
+  });
+  await check('static page: gamepad polling survives skipping the boot screen (no dead gamepad)', async () => {
+    const fn = extractFn(script, 'pollGamepad');
+    // The boot branch must re-schedule the next frame before returning:
+    // a bare `skipBoot(); return;` used to exit before the final
+    // requestAnimationFrame, killing gamepad polling for the run.
+    assert(fn.includes('skipBoot(); requestAnimationFrame(pollGamepad); return;'), 'boot branch must re-schedule pollGamepad before returning');
+    assert(!/skipBoot\(\); return;/.test(fn), 'bare skipBoot(); return; still present — gamepad dies on boot button press');
+    assert.strictEqual((fn.match(/requestAnimationFrame\(pollGamepad\)/g) || []).length, 2, 'pollGamepad should re-schedule twice: boot branch + end of loop');
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

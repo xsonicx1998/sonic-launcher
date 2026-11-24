@@ -15,7 +15,12 @@
 use base64::Engine;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Mutex,
+};
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
 
 use crate::db;
@@ -227,11 +232,122 @@ pub fn sanitize_game_title(title: &str) -> String {
     out.trim().to_string()
 }
 
+/// Hard timeout for a single yt-dlp call (Jumani: 8–10 s). A search or
+/// download that cannot finish in this window is killed — on the
+/// bot-blocked server IP a hanging call used to block the invoke pool
+/// forever and flash its console window for minutes.
+const YTDLP_TIMEOUT_SECS: u64 = 8;
+
+/// The yt-dlp child currently running, if any. A selection change kills
+/// it immediately (kill-on-change); a new run also kills any still
+/// running predecessor, so at most one yt-dlp child ever lives.
+static ACTIVE_YTDLP: Mutex<Option<Child>> = Mutex::new(None);
+
+/// Session circuit-breaker: set when YouTube answers with a bot-block /
+/// 429; YouTube lookups are skipped for the rest of the session instead
+/// of retrying (and hanging) on every click.
+static YOUTUBE_BLOCKED: AtomicBool = AtomicBool::new(false);
+
+/// Whether YouTube lookups are circuit-broken for this session.
+pub fn is_youtube_blocked() -> bool {
+    YOUTUBE_BLOCKED.load(Ordering::SeqCst)
+}
+
+/// Kill the yt-dlp child currently running, if any (selection change).
+/// Never errors: no child is already gone.
+pub fn cancel_ytdlp() {
+    if let Ok(mut guard) = ACTIVE_YTDLP.lock() {
+        if let Some(mut child) = guard.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+/// Phrases in yt-dlp stderr that mean YouTube is bot-blocking this IP.
+/// Pure — unit-tested (mirrored in verify/src/lib.rs music_pure).
+pub fn is_bot_block_error(stderr: &str) -> bool {
+    let lower = stderr.to_lowercase();
+    [
+        "sign in to confirm you're not a bot",
+        "confirm you're not a bot",
+        "http error 429",
+        "too many requests",
+        "http error 403",
+    ]
+    .iter()
+    .any(|p| lower.contains(p))
+}
+
+/// Mark YouTube lookups as blocked for the rest of the session.
+fn mark_youtube_blocked() {
+    YOUTUBE_BLOCKED.store(true, Ordering::SeqCst);
+}
+
 fn run_ytdlp(exe: &Path, args: &[&str]) -> Result<std::process::Output, String> {
-    Command::new(exe)
-        .args(args)
-        .output()
-        .map_err(|e| format!("cannot run {}: {e}", exe.display()))
+    let mut cmd = Command::new(exe);
+    cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // CREATE_NO_WINDOW (0x08000000): yt-dlp.exe is a console binary
+        // and the launcher is a GUI app with no console — without this
+        // flag Windows pops a visible console window for every call.
+        cmd.creation_flags(0x08000000);
+    }
+    let child = cmd
+        .spawn()
+        .map_err(|e| format!("cannot run {}: {e}", exe.display()))?;
+    // Register as the active child, killing any still-running
+    // predecessor (a chain the user already moved away from).
+    {
+        let mut guard = ACTIVE_YTDLP
+            .lock()
+            .map_err(|_| "yt-dlp state lock poisoned".to_string())?;
+        if let Some(mut old) = guard.take() {
+            let _ = old.kill();
+            let _ = old.wait();
+        }
+        *guard = Some(child);
+    }
+    let deadline = Instant::now() + Duration::from_secs(YTDLP_TIMEOUT_SECS);
+    loop {
+        // Poll the active child; the lock is released between polls so
+        // cancel_ytdlp() can take (and kill) it meanwhile.
+        let exited = {
+            let mut guard = ACTIVE_YTDLP
+                .lock()
+                .map_err(|_| "yt-dlp state lock poisoned".to_string())?;
+            match guard.as_mut() {
+                Some(c) => c
+                    .try_wait()
+                    .map_err(|e| format!("cannot wait on {}: {e}", exe.display()))?
+                    .is_some(),
+                // Taken by cancel_ytdlp() while we were polling.
+                None => return Err("yt-dlp was cancelled".to_string()),
+            }
+        };
+        if exited {
+            let mut guard = ACTIVE_YTDLP
+                .lock()
+                .map_err(|_| "yt-dlp state lock poisoned".to_string())?;
+            let Some(child) = guard.take() else {
+                return Err("yt-dlp was cancelled".to_string());
+            };
+            drop(guard);
+            return child
+                .wait_with_output()
+                .map_err(|e| format!("cannot read {} output: {e}", exe.display()));
+        }
+        if Instant::now() >= deadline {
+            cancel_ytdlp();
+            return Err(format!(
+                "yt-dlp timed out after {YTDLP_TIMEOUT_SECS}s: {}",
+                exe.display()
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
 }
 
 /// Download yt-dlp.exe on first run and verify it. Returns the version
@@ -288,6 +404,13 @@ pub fn search_theme_music(
     if !exe.is_file() {
         ensure_ytdlp(app)?;
     }
+    // Session circuit-breaker: a bot-blocked YouTube never spawns
+    // again this session — the chain falls through to KHInsider /
+    // SoundCloud instead of hanging on every click.
+    let is_youtube = !source.eq_ignore_ascii_case("soundcloud");
+    if is_youtube && is_youtube_blocked() {
+        return Err("YouTube lookups are paused for this session (bot-block detected)".to_string());
+    }
     let clean = sanitize_game_title(game_name);
     let clean = if clean.is_empty() {
         game_name.trim().to_string()
@@ -321,10 +444,11 @@ pub fn search_theme_music(
         ],
     )?;
     if !out.status.success() {
-        return Err(format!(
-            "theme search failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
+        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        if is_youtube && is_bot_block_error(&stderr) {
+            mark_youtube_blocked();
+        }
+        return Err(format!("theme search failed: {stderr}"));
     }
     let text = String::from_utf8_lossy(&out.stdout);
     let mut out_candidates = Vec::new();
@@ -409,6 +533,9 @@ fn download_audio_from_url(
     if let Some(existing) = music_file_for_key(&dir, game_key) {
         return Ok(existing.to_string_lossy().into_owned());
     }
+    if source.eq_ignore_ascii_case("youtube") && is_youtube_blocked() {
+        return Err("YouTube lookups are paused for this session (bot-block detected)".to_string());
+    }
     let exe = ytdlp_path(app)?;
     if !exe.is_file() {
         ensure_ytdlp(app)?;
@@ -435,10 +562,11 @@ fn download_audio_from_url(
         ],
     )?;
     if !out.status.success() {
-        return Err(format!(
-            "theme download failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
+        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        if source.eq_ignore_ascii_case("youtube") && is_bot_block_error(&stderr) {
+            mark_youtube_blocked();
+        }
+        return Err(format!("theme download failed: {stderr}"));
     }
     let Some(path) = music_file_for_key(&dir, game_key) else {
         return Err("download finished but no audio file appeared".to_string());
@@ -694,6 +822,28 @@ mod tests {
             "Hollow Knight"
         );
         assert_eq!(sanitize_game_title("Astro's Playroom"), "Astro's Playroom");
+    }
+
+    #[test]
+    fn bot_block_error_matches_youtube_block_phrases() {
+        assert!(is_bot_block_error(
+            "ERROR: Sign in to confirm you're not a bot. Use --cookies-from-browser or --cookies"
+        ));
+        assert!(is_bot_block_error(
+            "ERROR: HTTP Error 429: Too Many Requests"
+        ));
+        assert!(is_bot_block_error("ERROR: HTTP Error 403: Forbidden"));
+        assert!(is_bot_block_error("too many requests, retrying in 5s"));
+        assert!(!is_bot_block_error("ERROR: Video unavailable"));
+        assert!(!is_bot_block_error(
+            "ERROR: Unable to download video data: HTTP Error 404"
+        ));
+        assert!(!is_bot_block_error(""));
+    }
+
+    #[test]
+    fn ytdlp_timeout_is_within_the_8_to_10s_budget() {
+        assert!((8..=10).contains(&YTDLP_TIMEOUT_SECS));
     }
 
     #[test]

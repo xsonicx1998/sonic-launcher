@@ -120,6 +120,31 @@ pub mod art_pure {
     pub fn art_already_resolved(art_source: Option<&str>, resolved_appid: Option<i64>) -> bool {
         resolved_appid.is_some() || matches!(art_source, Some("manual") | Some("gog"))
     }
+    /// Curated Steam appids (v0.2.13). Mirror of
+    /// `art.rs::KNOWN_APPIDS` — games whose current store listing
+    /// is a renamed variant the strict matcher rejects.
+    const KNOWN_APPIDS: &[(&str, u32)] =
+        &[("grand theft auto 5", 3240220), ("the witcher 3", 292030)];
+    /// Mirror of `art.rs::known_appid`.
+    pub fn known_appid(name: &str) -> Option<u32> {
+        let norm = normalize_name(&sanitize_game_name(name));
+        KNOWN_APPIDS
+            .iter()
+            .find(|(key, _)| *key == norm)
+            .map(|(_, appid)| *appid)
+    }
+    /// Mirror of `art.rs::steam_hit_resolves` (v0.2.13 F1): a Steam
+    /// store hit resolves the game only when the CDN download
+    /// actually produced the tile.
+    pub fn steam_hit_resolves(download_ok: bool) -> bool {
+        download_ok
+    }
+    /// Mirror of `art.rs::lookup_failure_records` (v0.2.13 F2):
+    /// every lookup failure is recorded except a rate limit, so
+    /// "Retry Art" stays available after network errors.
+    pub fn lookup_failure_records(rate_limited: bool) -> bool {
+        !rate_limited
+    }
     const EDITION_SUFFIXES: &[&str] = &[
         "game of the year edition",
         "game of the year",
@@ -131,6 +156,10 @@ pub mod art_pure {
         "definitive edition",
         "complete edition",
         "enhanced edition",
+        // Bare "enhanced" (v0.2.13): mirror of art.rs — Steam
+        // replaced the original "Grand Theft Auto V" listing with
+        // "Grand Theft Auto V Enhanced".
+        "enhanced",
         "deluxe edition",
         "ultimate edition",
         "special edition",
@@ -561,17 +590,67 @@ pub mod art_pure {
 
         #[test]
         fn pick_match_grand_theft_auto_v_is_a_tier1_exact_match() {
-            // v0.2.12 diagnosis: GTA V's missing cover is NOT a matching
-            // failure — the store search matches it exactly (Roman V -> 5),
-            // so its first lookup must have failed transiently (network)
-            // and the old art_source=='icon' short-circuit then froze it
-            // on the exe icon forever.
+            // v0.2.13: the live Steam storesearch (2026-11-24) no
+            // longer returns the bare "Grand Theft Auto V" (271590) —
+            // Rockstar replaced the listing with "Grand Theft Auto V
+            // Enhanced" (3240220). The old test used a hypothetical
+            // list containing the bare title, so its premise was
+            // stale. With bare trailing "enhanced" stripped, the
+            // Enhanced listing normalizes to "grand theft auto 5"
+            // and Tier-1 matches.
             let cands = vec![
-                "Grand Theft Auto V: Premium Edition".to_string(),
-                "Grand Theft Auto V".to_string(),
-                "Grand Theft Auto IV".to_string(),
+                "Grand Theft Auto V Enhanced".to_string(),
+                "Grand Theft Auto: Vice City – The Definitive Edition".to_string(),
             ];
-            assert_eq!(pick_match("Grand Theft Auto V", &cands), Some(1));
+            assert_eq!(pick_match("Grand Theft Auto V", &cands), Some(0));
+            // The folder name itself sanitizes the same way.
+            assert_eq!(
+                sanitize_game_name("Grand Theft Auto V Enhanced"),
+                "grand theft auto v"
+            );
+        }
+
+        #[test]
+        fn pick_match_witcher_3_live_list_has_no_bare_name() {
+            // v0.2.13: the live storesearch returns only renamed
+            // variants — "Wild Hunt — Remastered" (0.600) and
+            // "REDkit" (0.750) — so the strict matcher rightly
+            // returns None and the curated override is what finds
+            // the cover.
+            let cands = vec![
+                "The Witcher 3: Wild Hunt — Remastered".to_string(),
+                "The Witcher 3 REDkit".to_string(),
+            ];
+            assert_eq!(pick_match("The Witcher 3", &cands), None);
+        }
+
+        #[test]
+        fn known_appid_overrides_renamed_steam_listings() {
+            // v0.2.13: Steam returns no bare name for these two.
+            assert_eq!(known_appid("Grand Theft Auto V"), Some(3240220));
+            assert_eq!(known_appid("The Witcher 3"), Some(292030));
+            // The sanitizer normalizes edition suffixes first, so an
+            // "Enhanced" folder name maps to the same appid.
+            assert_eq!(known_appid("Grand Theft Auto V Enhanced"), Some(3240220));
+            // Everything else goes through the store search.
+            assert_eq!(known_appid("Cyberpunk 2077"), None);
+            assert_eq!(known_appid("Some Random Game"), None);
+            assert_eq!(known_appid(""), None);
+        }
+
+        #[test]
+        fn steam_hit_resolves_only_when_the_download_produced_the_tile() {
+            // v0.2.13 F1: a failed CDN download must not resolve the game.
+            assert!(steam_hit_resolves(true));
+            assert!(!steam_hit_resolves(false));
+        }
+
+        #[test]
+        fn lookup_failure_records_everything_but_a_rate_limit() {
+            // v0.2.13 F2: network failures are recorded so "Retry Art"
+            // stays available; a rate limit is transient and is not.
+            assert!(lookup_failure_records(false));
+            assert!(!lookup_failure_records(true));
         }
 
         #[test]

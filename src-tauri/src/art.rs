@@ -318,6 +318,12 @@ const EDITION_SUFFIXES: &[&str] = &[
     "definitive edition",
     "complete edition",
     "enhanced edition",
+    // Bare "enhanced" (v0.2.13): Steam replaced the original
+    // "Grand Theft Auto V" listing with "Grand Theft Auto V
+    // Enhanced" — without this, the strict matcher scores the
+    // Enhanced listing 0.800 and rejects it. After "enhanced
+    // edition" so the longer phrase is tried first.
+    "enhanced",
     "deluxe edition",
     "ultimate edition",
     "special edition",
@@ -830,6 +836,46 @@ pub fn art_already_resolved(art_source: Option<&str>, resolved_appid: Option<i64
     resolved_appid.is_some() || matches!(art_source, Some("manual") | Some("gog"))
 }
 
+/// Curated Steam appids for games whose current store listing is a
+/// renamed variant the strict matcher rejects (v0.2.13). Steam
+/// replaced the original "Grand Theft Auto V" listing with the
+/// Enhanced edition and "The Witcher 3" with "Wild Hunt —
+/// Remastered" / "REDkit" — no bare name is returned, so the
+/// matcher can never pick them. Keys are normalized folder names
+/// (`normalize_name` of the sanitized name). Consulted in
+/// `resolve_art_for_game` before the store search. Keep it small
+/// and explicit — only games proven to need it.
+const KNOWN_APPIDS: &[(&str, u32)] = &[("grand theft auto 5", 3240220), ("the witcher 3", 292030)];
+
+/// The curated Steam appid for a folder name, if one is known.
+/// Pure — unit-tested.
+pub fn known_appid(name: &str) -> Option<u32> {
+    let norm = normalize_name(&sanitize_game_name(name));
+    KNOWN_APPIDS
+        .iter()
+        .find(|(key, _)| *key == norm)
+        .map(|(_, appid)| *appid)
+}
+
+/// `true` when a Steam store hit resolves the game: only when the
+/// CDN download actually produced the tile (v0.2.13 F1). A failed
+/// download leaves the game unresolved — the failure is recorded
+/// (F2) so the game stays retryable and the toast stays truthful.
+/// Pure — unit-tested.
+pub fn steam_hit_resolves(download_ok: bool) -> bool {
+    download_ok
+}
+
+/// `true` when a lookup error should be recorded as a failed
+/// lookup (v0.2.13 F2): network errors, timeouts, bad responses,
+/// and failed CDN downloads are all recorded, so "Retry Art" stays
+/// in the ••• menu. A rate limit is transient — the worker stops
+/// the session's lookups anyway — and is never recorded. Pure —
+/// unit-tested.
+pub fn lookup_failure_records(rate_limited: bool) -> bool {
+    !rate_limited
+}
+
 /// Resolve art for one scanned game: cached Steam appid first, then
 /// the Steam store search, then the GOG Catalog. Hits are cached in
 /// the DB; a double miss records the failure time (14-day cooldown).
@@ -862,15 +908,40 @@ pub fn resolve_art_for_game(app: &AppHandle, game_key: &str, name: &str) -> ArtR
     if !is_auto_fetch_art_enabled(app) {
         return ArtResolve::Disabled;
     }
+    // Curated override (v0.2.13): a known appid skips the store
+    // search entirely. This sits BEFORE the cooldown check on
+    // purpose — the override performs no store search, so the
+    // cooldown (which exists to protect the search API) does not
+    // apply to it. A failed download is still recorded (F2), so
+    // the worker backs off and "Retry Art" stays available.
+    // Without this, a game whose lookup failed yesterday would
+    // stay blocked for 14 days even though its appid is known.
+    if let Some(appid) = known_appid(name) {
+        if steam_hit_resolves(download_steam_art(app, game_key, appid)) {
+            let _ = db::set_art_resolved(app, id, appid, "steam");
+            return ArtResolve::Found;
+        }
+        let _ = db::mark_art_lookup_failed(app, id);
+        return ArtResolve::Failed;
+    }
     if art_lookup_blocked(game.art_lookup_failed_at, db::now()) {
         return ArtResolve::Blocked;
     }
     // Steam store search first.
     match resolve_steam_appid(name) {
         Ok(Some(appid)) => {
-            download_steam_art(app, game_key, appid);
-            let _ = db::set_art_resolved(app, id, appid, "steam");
-            ArtResolve::Found
+            // v0.2.13 F1: only a download that actually produced
+            // the tile resolves the game. Recording a failed
+            // download as a success cleared the failure and
+            // settled the game forever with a placeholder tile
+            // and no "Retry Art".
+            if steam_hit_resolves(download_steam_art(app, game_key, appid)) {
+                let _ = db::set_art_resolved(app, id, appid, "steam");
+                ArtResolve::Found
+            } else {
+                let _ = db::mark_art_lookup_failed(app, id);
+                ArtResolve::Failed
+            }
         }
         Ok(None) => {
             // Then the GOG Catalog.
@@ -888,12 +959,31 @@ pub fn resolve_art_for_game(app: &AppHandle, game_key: &str, name: &str) -> ArtR
                     let _ = db::mark_art_lookup_failed(app, id);
                     ArtResolve::NotFound
                 }
-                Err(LookupError::RateLimited) => ArtResolve::RateLimited,
-                Err(LookupError::Failed(_)) => ArtResolve::Failed,
+                Err(e) => {
+                    // v0.2.13 F2: record network failures too — a
+                    // network error used to record nothing, so
+                    // "Retry Art" vanished from the menu until
+                    // some later render double-missed.
+                    if lookup_failure_records(matches!(e, LookupError::RateLimited)) {
+                        let _ = db::mark_art_lookup_failed(app, id);
+                    }
+                    match e {
+                        LookupError::RateLimited => ArtResolve::RateLimited,
+                        LookupError::Failed(_) => ArtResolve::Failed,
+                    }
+                }
             }
         }
-        Err(LookupError::RateLimited) => ArtResolve::RateLimited,
-        Err(LookupError::Failed(_)) => ArtResolve::Failed,
+        Err(e) => {
+            // v0.2.13 F2: see above.
+            if lookup_failure_records(matches!(e, LookupError::RateLimited)) {
+                let _ = db::mark_art_lookup_failed(app, id);
+            }
+            match e {
+                LookupError::RateLimited => ArtResolve::RateLimited,
+                LookupError::Failed(_) => ArtResolve::Failed,
+            }
+        }
     }
 }
 
@@ -1478,17 +1568,67 @@ mod tests {
 
     #[test]
     fn pick_match_grand_theft_auto_v_is_a_tier1_exact_match() {
-        // v0.2.12 diagnosis: GTA V's missing cover is NOT a matching
-        // failure — the store search matches it exactly (Roman V -> 5),
-        // so its first lookup must have failed transiently (network)
-        // and the old art_source=='icon' short-circuit then froze it
-        // on the exe icon forever.
+        // v0.2.13: the live Steam storesearch (2026-11-24) no
+        // longer returns the bare "Grand Theft Auto V" (271590) —
+        // Rockstar replaced the listing with "Grand Theft Auto V
+        // Enhanced" (3240220). The old test used a hypothetical
+        // list containing the bare title, so its premise was stale
+        // (and the v0.2.12 diagnosis that matching was NOT the
+        // problem was wrong for the same reason). With bare
+        // trailing "enhanced" stripped, the Enhanced listing
+        // normalizes to "grand theft auto 5" and Tier-1 matches.
         let cands = vec![
-            "Grand Theft Auto V: Premium Edition".to_string(),
-            "Grand Theft Auto V".to_string(),
-            "Grand Theft Auto IV".to_string(),
+            "Grand Theft Auto V Enhanced".to_string(),
+            "Grand Theft Auto: Vice City – The Definitive Edition".to_string(),
         ];
-        assert_eq!(pick_match("Grand Theft Auto V", &cands), Some(1));
+        assert_eq!(pick_match("Grand Theft Auto V", &cands), Some(0));
+        // The folder name itself sanitizes the same way.
+        assert_eq!(
+            sanitize_game_name("Grand Theft Auto V Enhanced"),
+            "grand theft auto v"
+        );
+    }
+
+    #[test]
+    fn pick_match_witcher_3_live_list_has_no_bare_name() {
+        // v0.2.13: the live storesearch returns only renamed
+        // variants — "Wild Hunt — Remastered" (0.600) and "REDkit"
+        // (0.750) — so the strict matcher rightly returns None
+        // and the curated override is what finds the cover.
+        let cands = vec![
+            "The Witcher 3: Wild Hunt — Remastered".to_string(),
+            "The Witcher 3 REDkit".to_string(),
+        ];
+        assert_eq!(pick_match("The Witcher 3", &cands), None);
+    }
+
+    #[test]
+    fn known_appid_overrides_renamed_steam_listings() {
+        // v0.2.13: Steam returns no bare name for these two.
+        assert_eq!(known_appid("Grand Theft Auto V"), Some(3240220));
+        assert_eq!(known_appid("The Witcher 3"), Some(292030));
+        // The sanitizer normalizes edition suffixes first, so an
+        // "Enhanced" folder name maps to the same appid.
+        assert_eq!(known_appid("Grand Theft Auto V Enhanced"), Some(3240220));
+        // Everything else goes through the store search.
+        assert_eq!(known_appid("Cyberpunk 2077"), None);
+        assert_eq!(known_appid("Some Random Game"), None);
+        assert_eq!(known_appid(""), None);
+    }
+
+    #[test]
+    fn steam_hit_resolves_only_when_the_download_produced_the_tile() {
+        // v0.2.13 F1: a failed CDN download must not resolve the game.
+        assert!(steam_hit_resolves(true));
+        assert!(!steam_hit_resolves(false));
+    }
+
+    #[test]
+    fn lookup_failure_records_everything_but_a_rate_limit() {
+        // v0.2.13 F2: network failures are recorded so "Retry Art"
+        // stays available; a rate limit is transient and is not.
+        assert!(lookup_failure_records(false));
+        assert!(!lookup_failure_records(true));
     }
 
     #[test]

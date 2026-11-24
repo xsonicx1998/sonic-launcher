@@ -2612,6 +2612,21 @@ pub mod launch_pure {
         !p.is_empty() && p.to_lowercase().ends_with(".exe")
     }
 
+    /// Fail-soft decision: report the launch only when the process
+    /// actually exited (not still running) with a non-zero code. A
+    /// fast exit with code 0 is never reported (handoff stubs exit 0
+    /// by design), and a still-running process is not a failure.
+    pub fn should_report_fast_exit(exited: bool, success: bool) -> bool {
+        exited && !success
+    }
+
+    /// A persisted fast-exit notice stays fresh for 15 minutes. Older
+    /// notices are dropped so a stale one never pops up on a later
+    /// startup. A timestamp in the future (clock skew) counts as fresh.
+    pub fn pending_fast_exit_is_fresh(created_at_unix: u64, now_unix: u64) -> bool {
+        created_at_unix.saturating_add(900) >= now_unix
+    }
+
     #[cfg(test)]
     mod tests {
         use super::*;
@@ -2639,6 +2654,78 @@ pub mod launch_pure {
             assert!(!is_valid_exe_path(r"C:\Games\Game\run.bat"));
             assert!(!is_valid_exe_path(r"C:\Games\Game\game.lnk"));
             assert!(!is_valid_exe_path(r"C:\Games\Game\game.exe.bak"));
+        }
+
+        #[test]
+        fn fast_exit_reported_only_for_exited_nonzero() {
+            assert!(should_report_fast_exit(true, false));
+            assert!(!should_report_fast_exit(true, true));
+            assert!(!should_report_fast_exit(false, false));
+            assert!(!should_report_fast_exit(false, true));
+        }
+
+        #[test]
+        fn pending_fast_exit_fresh_for_15_minutes() {
+            let now = 1_700_000_000u64;
+            assert!(pending_fast_exit_is_fresh(now, now));
+            assert!(pending_fast_exit_is_fresh(now - 899, now));
+            assert!(pending_fast_exit_is_fresh(now - 900, now));
+            assert!(!pending_fast_exit_is_fresh(now - 901, now));
+            assert!(!pending_fast_exit_is_fresh(0, now));
+            // A timestamp in the future (clock skew) counts as fresh.
+            assert!(pending_fast_exit_is_fresh(now + 60, now));
+        }
+    }
+}
+
+/// v0.2.9 window lifecycle (destroy on launch): the pure state
+/// machine behind session.rs, so the decisions are unit-testable.
+/// The Tauri window itself cannot be tested here.
+pub mod session_pure {
+    /// Which side of the v0.2.9 window lifecycle the launcher is in.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum LauncherWindow {
+        Open,
+        Destroyed,
+    }
+
+    /// "Minimize on launch" ON destroys the window on launch (the
+    /// ~4 MB host stays in the tray); OFF keeps the window open.
+    pub fn window_after_launch(minimize_on_launch: bool) -> LauncherWindow {
+        if minimize_on_launch {
+            LauncherWindow::Destroyed
+        } else {
+            LauncherWindow::Open
+        }
+    }
+
+    /// How many times window recreation is retried before giving up
+    /// (the tray icon stays as the manual fallback after that).
+    pub const MAX_RECREATE_ATTEMPTS: u32 = 3;
+
+    /// Recreate (or show) the window when a game exits — but only if
+    /// it is actually gone, and only for a bounded number of tries.
+    pub fn should_recreate_window(window: LauncherWindow, attempts: u32) -> bool {
+        window == LauncherWindow::Destroyed && attempts < MAX_RECREATE_ATTEMPTS
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn launch_with_minimize_on_destroys_the_window() {
+            assert_eq!(window_after_launch(true), LauncherWindow::Destroyed);
+            assert_eq!(window_after_launch(false), LauncherWindow::Open);
+        }
+
+        #[test]
+        fn recreate_only_when_destroyed_and_within_attempts() {
+            assert!(should_recreate_window(LauncherWindow::Destroyed, 0));
+            assert!(should_recreate_window(LauncherWindow::Destroyed, 2));
+            assert!(!should_recreate_window(LauncherWindow::Destroyed, 3));
+            assert!(!should_recreate_window(LauncherWindow::Destroyed, 4));
+            assert!(!should_recreate_window(LauncherWindow::Open, 0));
         }
     }
 }

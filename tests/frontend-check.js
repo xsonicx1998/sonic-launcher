@@ -26,6 +26,7 @@ function makeEl(id) {
     getBoundingClientRect(){ return { left: 0, top: 0, width: 100, height: 100 }; },
     focus(){}, click(){}, play(){ return Promise.resolve(); }, pause(){},
     getContext(){ return null; },
+    decode(){ return Promise.resolve(); },
     parentElement: { style: {} },
   };
 }
@@ -41,7 +42,21 @@ global.document = {
   querySelectorAll: () => [],
   querySelector: () => null,
   body: bodyEl,
+  hidden: false,
+  documentElement: { clientWidth: 1920 },
   addEventListener(){},
+};
+// Image constructor (buildBgSlides pre-decodes tile images).
+global.Image = class {
+  constructor(){ this.src = ''; }
+  decode(){ return Promise.resolve(); }
+};
+// localStorage (the v0.2.9 recreate flag survives window destruction).
+global.localStorage = {
+  _s: {},
+  getItem(k){ return Object.prototype.hasOwnProperty.call(this._s, k) ? this._s[k] : null; },
+  setItem(k, v){ this._s[k] = String(v); },
+  removeItem(k){ delete this._s[k]; },
 };
 global.window = global;
 global.addEventListener = () => {};
@@ -58,6 +73,8 @@ let mockSearchResults = {}; // key: source|fallback -> array of candidates
 let mockKhinsider = null;   // null = not found, string = cached path
 let mockCachedMusic = null; // null = none
 let mockArt = null;         // null = no art, object = get_game_art result
+let mockGames = [];         // list_all_games result (v0.2.9)
+let mockPendingFastExit = null; // get_pending_fast_exit result (v0.2.9)
 global.window.__TAURI__ = {
   core: {
     invoke: (cmd, args) => {
@@ -65,6 +82,15 @@ global.window.__TAURI__ = {
       switch (cmd) {
         case 'get_setting': return Promise.resolve(mockSettings[args.key] ?? null);
         case 'set_setting': mockSettings[args.key] = args.value; return Promise.resolve(null);
+        case 'list_all_games': return Promise.resolve(mockGames);
+        case 'get_pending_fast_exit': return Promise.resolve(mockPendingFastExit);
+        case 'begin_managed_launch': return Promise.resolve(null);
+        case 'start_playtime_session': return Promise.resolve(1);
+        case 'end_playtime_session': return Promise.resolve(null);
+        case 'get_playtime': return Promise.resolve(0);
+        case 'scan_folders': return Promise.resolve([]);
+        case 'list_scan_folders': return Promise.resolve([]);
+        case 'launch_game': return Promise.resolve(null);
         case 'ensure_ytdlp': return Promise.resolve(null);
         case 'get_game_music': return Promise.resolve(mockCachedMusic);
         case 'get_sfx_dir': return Promise.resolve('C:\\Users\\test\\AppData\\Roaming\\com.sonic.launcher\\sfx');
@@ -150,7 +176,12 @@ const NEEDED_FNS = [
   'saveAutoFetchArt', 'copySgdbLink',
   'pickCoverArt', 'setCoverArtAppid', 'pasteCoverArtUrl', 'retryArt',
   'listenFastExit', 'showFastExitNotice', 'hideFastExitNotice', 'fastExitChangeExe',
-  'openChangeExe', 'startExePoll', 'stopRunningPoll',
+  'openChangeExe', 'startExePoll', 'stopRunningPoll', 'startRunningPoll',
+  'launchSelected', 'loadRealPlaytime',
+  // v0.2.9: empty library, visibility pause, managed launch.
+  'refreshGames', 'buildBgSlides', 'buildRow', 'selectGame', 'render',
+  'setHeroBg', 'anchorRow', 'tileSmPx', 'updateEmptyState', 'emptyStateScan',
+  'addScanFolderFlow', 'checkPendingFastExit', 'applyVisibilityPause', 'bootSeq',
 ];
 const VAR_DEFS = [];
 
@@ -177,9 +208,12 @@ async function main() {
   var themeAudio, themeDebounce, themeAutoTried, GAMES, sel, tileEls;
   var toastTimer = null;
   var bgSlides = [];
+  var bgStack = getEl('bgStack'), currentBgEl = null, bgZ = 1; // buildBgSlides / setHeroBg
   var exePoll = null, runningPoll = null, currentSessionId = null;
-  // Stub: applyRealArt calls render() when a hero arrives; the harness
-  // only records that a render was requested.
+  // Stubs: render/selectGame/refreshGames are replaced below by the
+  // real extracted functions wrapped with call counters. Existing
+  // tests keep the stub behaviour; v0.2.9 tests opt into the real
+  // behaviour with the useReal* flags.
   var renderCalls = 0;
   function render(){ renderCalls++; }
   var SFX_STEMS = ['boot', 'nav', 'select', 'launch', 'back', 'cc_open', 'ambient'];
@@ -198,6 +232,25 @@ async function main() {
   function refreshGames(){ refreshGamesCalls++; }
   // Evaluate the extracted code in this context (globals above are in scope).
   eval(code);
+  // Wrap the real functions (the eval'd declarations replaced the
+  // stubs above): keep the call counters, delegate to the real
+  // implementation only when a v0.2.9 test opts in.
+  const _realSelectGame = selectGame;
+  let useRealSelectGame = false;
+  selectGame = function(i){
+    selectGameCalls.push(i);
+    if(useRealSelectGame){
+      const need = Math.max(i, sel) + 1;
+      while(tileEls.length <= need) tileEls.push(makeEl('tile' + tileEls.length));
+      return _realSelectGame(i);
+    }
+  };
+  const _realRender = render;
+  let useRealRender = false;
+  render = function(){ renderCalls++; if(useRealRender){ return _realRender(); } };
+  const _realRefreshGames = refreshGames;
+  let useRealRefreshGames = false;
+  refreshGames = function(){ refreshGamesCalls++; if(useRealRefreshGames){ return _realRefreshGames(); } };
 
   // Seed the game list the chain needs.
   GAMES = [{ key: 'g1', row: 'Hollow Knight', source: 'steam', appid: '367520', exePath: '' }];
@@ -300,8 +353,8 @@ async function main() {
   });
 
   console.log('Game menu / search / music bar:');
-  await check('••• menu opens for a demo game with Change Theme Music + Paste music URL', async () => {
-    GAMES = [{ key: 'dreams', row: 'Dreams' }]; // no source field = demo
+  await check('••• menu opens for a real game with Change Theme Music + Paste music URL', async () => {
+    GAMES = [{ key: 'scan-7', row: 'Hollow Knight', source: 'scan', scanId: 7, exePath: 'C:\\Games\\Hollow Knight\\Hollow Knight.exe', confidence: 'high', hasOverride: false }];
     sel = 0;
     const m = getEl('gameMenu');
     m.style.display = 'none';
@@ -309,7 +362,7 @@ async function main() {
     assert.strictEqual(m.style.display, 'block', 'menu did not open');
     assert(m.innerHTML.includes('Change Theme Music'), 'missing Change Theme Music: ' + m.innerHTML);
     assert(m.innerHTML.includes('Paste music URL'), 'missing Paste music URL');
-    assert(m.innerHTML.includes('Demo game'), 'missing demo notice');
+    assert(!m.innerHTML.includes('Demo game'), 'no demo notice should remain: ' + m.innerHTML);
     toggleGameMenu();
     assert.strictEqual(m.style.display, 'none', 'menu did not close on second toggle');
   });
@@ -427,7 +480,7 @@ async function main() {
     assert(!m.innerHTML.includes('Retry Art'), 'Retry Art should not show when artFailed is false');
     GAMES = [{ key: 'dreams', row: 'Dreams' }];
     buildGameMenu();
-    assert(!m.innerHTML.includes('Set Cover Art'), 'demo games should not get cover-art items');
+    assert(!m.innerHTML.includes('Set Cover Art'), 'games without a source should not get cover-art items');
   });
   await check('pickCoverArt invokes pick_cover_art and refreshes', async () => {
     GAMES = [{ key: 'scan-7', row: 'Hollow Knight', source: 'scan', scanId: 7 }];
@@ -742,6 +795,142 @@ async function main() {
     assert(!document.body.classList.contains('game-running'), 'game-running class should be removed');
     assert.strictEqual(n.style.display, 'block', 'notice must survive the exe restore');
     hideFastExitNotice();
+  });
+
+  console.log('Memory trim (v0.2.9):');
+  await check('demo games are gone: GAMES starts empty, no base64 art in the page', async () => {
+    assert(html.includes('var GAMES = [];'), 'GAMES should start as an empty array');
+    assert(!html.includes('var GAMES = [{"key"'), 'demo literal still present');
+    assert(!html.includes('/9j/'), 'base64 JPEG art still in the page');
+    assert(html.length < 300000, 'page should be ~100KB without demo art, got ' + html.length);
+    assert(html.includes('id="emptyState"'), 'missing emptyState element');
+    assert(html.includes('Scan for games'), 'missing Scan for games button');
+    assert(html.includes('Add Game'), 'missing Add Game button');
+  });
+  await check('empty library: refreshGames with no games shows the empty state', async () => {
+    useRealSelectGame = true; useRealRender = true; useRealRefreshGames = true;
+    mockGames = [];
+    mockPendingFastExit = null;
+    mockCachedMusic = null;
+    GAMES = [{ key: 'seed', row: 'Seed', source: 'scan' }];
+    sel = 0;
+    tileEls = [makeEl('store'), makeEl('tile0')];
+    refreshGames();
+    await sleep(50);
+    assert.strictEqual(GAMES.length, 0, 'library should be empty, got ' + GAMES.length);
+    assert.strictEqual(sel, -1, 'nothing should be selected');
+    assert.strictEqual(getEl('emptyState').style.display, 'block', 'empty state should show');
+    assert.strictEqual(getEl('heroBlock').style.display, 'none', 'hero should hide when empty');
+    assert.strictEqual(getEl('heroCard').style.display, 'none', 'hero card should hide when empty');
+    useRealSelectGame = false; useRealRender = false; useRealRefreshGames = false;
+  });
+  await check('library with games hides the empty state and selects the first game', async () => {
+    useRealSelectGame = true; useRealRender = true; useRealRefreshGames = true;
+    mockGames = [{ key: 'scan-7', name: 'Hollow Knight', source: 'scan', appid: null, exe_path: 'C:\\Games\\Hollow Knight\\Hollow Knight.exe', launch_uri: null, folder: 'C:\\Games\\Hollow Knight', confidence: 'high', pick_source: 'name', has_override: false, art_failed: false, art_is_icon: false }];
+    mockPendingFastExit = null;
+    mockCachedMusic = null;
+    GAMES = [];
+    sel = -1;
+    tileEls = [];
+    refreshGames();
+    await sleep(50);
+    assert.strictEqual(GAMES.length, 1, 'library should have one game');
+    assert.strictEqual(sel, 0, 'first game should be selected');
+    assert.strictEqual(getEl('emptyState').style.display, 'none', 'empty state should hide');
+    assert.strictEqual(getEl('heroBlock').style.display, '', 'hero should show');
+    assert.strictEqual(GAMES[0].row, 'Hollow Knight', 'wrong game mapped');
+    useRealSelectGame = false; useRealRender = false; useRealRefreshGames = false;
+  });
+  await check('selectGame guards an empty library (no crash, empty state)', async () => {
+    useRealSelectGame = true;
+    GAMES = [];
+    sel = 0;
+    tileEls = [makeEl('store'), makeEl('tile0')];
+    selectGame(0);
+    assert.strictEqual(sel, -1, 'sel should be -1 for an empty library');
+    assert.strictEqual(getEl('emptyState').style.display, 'block', 'empty state should show');
+    selectGame(-1);
+    assert.strictEqual(sel, -1, 'negative index should stay unselected');
+    useRealSelectGame = false;
+  });
+  await check('visibility pause toggles the page-hidden class', async () => {
+    global.document.hidden = true;
+    applyVisibilityPause();
+    assert(document.body.classList.contains('page-hidden'), 'page-hidden should be set while hidden');
+    global.document.hidden = false;
+    applyVisibilityPause();
+    assert(!document.body.classList.contains('page-hidden'), 'page-hidden should clear when visible');
+  });
+  await check('boot skips when the window was recreated after a game', async () => {
+    GAMES = [{ key: 'scan-7', row: 'Hollow Knight', source: 'scan', img: 'x', bg: 'y' }];
+    sel = 0;
+    tileEls = [makeEl('store'), makeEl('tile0')];
+    global.localStorage.setItem('sonic-launcher-recreated', '1');
+    const b = getEl('boot');
+    b.style.display = 'flex';
+    bootSeq();
+    assert.strictEqual(b.style.display, 'none', 'boot should be skipped on recreate');
+    assert.strictEqual(global.localStorage.getItem('sonic-launcher-recreated'), null, 'recreate flag should be consumed');
+    await sleep(1250); // enterHome timers settle
+  });
+  await check('pending fast-exit notice shows on the startup check', async () => {
+    mockPendingFastExit = { game_name: 'Fail', game_key: 'scan-9' };
+    const n = getEl('fastExitNotice');
+    n.style.display = 'none';
+    invokeLog.length = 0;
+    checkPendingFastExit();
+    await sleep(50);
+    assert(invokeLog.some((c) => c.cmd === 'get_pending_fast_exit'), 'should ask the backend for the pending notice');
+    assert.strictEqual(n.style.display, 'block', 'notice should show');
+    assert(getEl('fastExitText').textContent.includes('Fail'), 'notice should name the game');
+    hideFastExitNotice();
+    mockPendingFastExit = null;
+    n.style.display = 'none';
+    checkPendingFastExit();
+    await sleep(50);
+    assert.strictEqual(n.style.display, 'none', 'no notice when none is pending');
+  });
+  await check('empty-state Scan rescans configured folders and refreshes', async () => {
+    mockGames = [];
+    invokeLog.length = 0;
+    refreshGamesCalls = 0;
+    emptyStateScan();
+    await sleep(50);
+    assert(invokeLog.some((c) => c.cmd === 'list_scan_folders'), 'should list scan folders');
+    assert.strictEqual(refreshGamesCalls, 0, 'no refresh with no folders configured (add-folder flow is a UI dialog)');
+  });
+  await check('launchSelected with minimize ON invokes begin_managed_launch', async () => {
+    GAMES = [{ key: 'scan-9', row: 'Fail', source: 'scan', scanId: 9, exePath: 'C:\\Games\\Fail\\fail.exe' }];
+    sel = 0;
+    mockSettings.minimize_on_launch = '1';
+    mockCachedMusic = null;
+    invokeLog.length = 0;
+    global.localStorage.removeItem('sonic-launcher-recreated');
+    launchSelected();
+    await sleep(100);
+    const launched = invokeLog.find((c) => c.cmd === 'launch_game');
+    assert(launched, 'launch_game should be invoked');
+    const managed = invokeLog.find((c) => c.cmd === 'begin_managed_launch');
+    assert(managed, 'begin_managed_launch should be invoked, got: ' + invokeLog.map((c) => c.cmd).join(','));
+    assert.strictEqual(managed.args.gameKey, 'scan-9', 'wrong gameKey');
+    assert.strictEqual(managed.args.source, 'scan', 'wrong source');
+    assert.strictEqual(managed.args.exePath, 'C:\\Games\\Fail\\fail.exe', 'wrong exePath');
+    assert.strictEqual(global.localStorage.getItem('sonic-launcher-recreated'), '1', 'recreate flag should be set before destroy');
+    assert(!invokeLog.some((c) => c.cmd === 'start_playtime_session'), 'frontend must not start the session in managed mode');
+  });
+  await check('launchSelected with minimize OFF starts the frontend session + exe poll', async () => {
+    GAMES = [{ key: 'scan-9', row: 'Fail', source: 'scan', scanId: 9, exePath: 'C:\\Games\\Fail\\fail.exe' }];
+    sel = 0;
+    mockSettings.minimize_on_launch = '0';
+    mockCachedMusic = null;
+    invokeLog.length = 0;
+    launchSelected();
+    await sleep(150);
+    assert(invokeLog.some((c) => c.cmd === 'start_playtime_session'), 'frontend should start the session, got: ' + invokeLog.map((c) => c.cmd).join(','));
+    assert(!invokeLog.some((c) => c.cmd === 'begin_managed_launch'), 'managed launch must not run when OFF');
+    assert(exePoll !== null, 'exe poll should be running');
+    if(exePoll){ clearInterval(exePoll); exePoll = null; }
+    delete mockSettings.minimize_on_launch;
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

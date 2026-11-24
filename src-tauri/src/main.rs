@@ -39,6 +39,7 @@ mod khinsider;
 mod launch;
 mod music;
 mod playtime;
+mod session;
 mod steam;
 mod stores;
 
@@ -402,9 +403,60 @@ fn is_process_running(exe_name: String) -> bool {
     playtime::is_process_running(&exe_name)
 }
 
+// --- v0.2.9: destroy the window on launch -------------------------------
+
+/// Start a managed game session (see session.rs): start the playtime
+/// session, spawn the exit watcher, then destroy the launcher window.
+/// The watcher recreates the window when the game exits.
+#[tauri::command]
+fn begin_managed_launch(
+    app: AppHandle,
+    source: String,
+    appid: Option<u32>,
+    exe_path: Option<String>,
+    game_key: String,
+    game_name: String,
+) -> Result<(), String> {
+    session::begin_managed_launch(&app, &source, appid, exe_path, &game_key, &game_name)
+}
+
+/// Show the launcher window, recreating it first if it was destroyed
+/// (e.g. while a game was running). The tray click uses the same path.
+#[tauri::command]
+fn show_launcher_window(app: AppHandle) -> Result<(), String> {
+    session::show_or_recreate_window(&app)
+}
+
+/// Take (read + delete) the pending fast-exit notice the backend
+/// recorded, if there is a fresh one. The frontend calls this on
+/// startup and after every window restore — the live event alone can
+/// be lost while the window is hidden or destroyed.
+#[tauri::command]
+fn get_pending_fast_exit(app: AppHandle) -> Option<launch::FastExit> {
+    launch::take_pending_fast_exit(&app)
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            // System tray: the ~4 MB host stays here while a game runs
+            // and the window is destroyed. Clicking the icon brings
+            // the launcher window back (recreating it if needed).
+            if let Some(icon) = app.default_window_icon() {
+                let _tray = tauri::tray::TrayIconBuilder::with_id("main")
+                    .icon(icon.clone())
+                    .tooltip("Sonic Launcher")
+                    .on_tray_icon_event(|tray, event| {
+                        if let tauri::tray::TrayIconEvent::Click { .. } = event {
+                            let handle = tray.app_handle().clone();
+                            let _ = session::show_or_recreate_window(&handle);
+                        }
+                    })
+                    .build(app)?;
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             detect_steam_games,
             get_running_appid,
@@ -446,7 +498,10 @@ fn main() {
             list_playtime,
             start_playtime_session,
             end_playtime_session,
-            is_process_running
+            is_process_running,
+            begin_managed_launch,
+            show_launcher_window,
+            get_pending_fast_exit
         ])
         .run(tauri::generate_context!())
         .expect("error while running Sonic Launcher");

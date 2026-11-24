@@ -222,6 +222,14 @@ pub fn set_setting(app: &AppHandle, key: &str, value: &str) -> Result<(), String
     Ok(())
 }
 
+/// Delete one setting (used to consume the pending fast-exit notice).
+pub fn clear_setting(app: &AppHandle, key: &str) -> Result<(), String> {
+    let conn = open(app)?;
+    conn.execute("DELETE FROM settings WHERE key = ?1", params![key])
+        .map_err(|e| format!("cannot clear setting: {e}"))?;
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Theme music (Phase 3).
 // ---------------------------------------------------------------------------

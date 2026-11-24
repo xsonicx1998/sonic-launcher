@@ -9,18 +9,76 @@
 //! some legit exes are handoff stubs that exit fast by design (and a
 //! fast exit with code 0 is never reported at all).
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Command;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter};
 
+use crate::db;
+
+/// Settings key holding a persisted fast-exit notice (JSON `FastExit`).
+/// The live `launch-fast-exit` event can be lost while the launcher
+/// window is hidden or destroyed, so the backend also records the
+/// notice here; the frontend consumes it on the next (re)start or
+/// restore (see `take_pending_fast_exit`).
+const PENDING_FAST_EXIT_KEY: &str = "pending_fast_exit";
+
+/// A fast-exit notice stays fresh for 15 minutes. Older notices are
+/// dropped so a stale one never pops up on a later startup.
+const PENDING_FAST_EXIT_TTL_SECS: u64 = 900;
+
+fn now_unix() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// Fail-soft decision: report the launch only when the process
+/// actually exited (not still running) with a non-zero code. A fast
+/// exit with code 0 is never reported (handoff stubs exit 0 by
+/// design), and a still-running process is not a failure.
+pub fn should_report_fast_exit(exited: bool, success: bool) -> bool {
+    exited && !success
+}
+
+/// A persisted fast-exit notice is fresh for 15 minutes. A timestamp
+/// in the future (clock skew) counts as fresh.
+pub fn pending_fast_exit_is_fresh(created_at_unix: u64, now_unix: u64) -> bool {
+    created_at_unix.saturating_add(PENDING_FAST_EXIT_TTL_SECS) >= now_unix
+}
+
 /// Payload of the `launch-fast-exit` event.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FastExit {
     pub game_name: Option<String>,
     pub game_key: Option<String>,
     pub exe_path: String,
+    /// Unix seconds when the fast exit was observed (freshness check).
+    pub created_at_unix: u64,
+}
+
+/// Record a fast-exit notice for the frontend to pick up on the next
+/// (re)start or restore. Overwrites any earlier unclaimed notice.
+pub fn record_pending_fast_exit(app: &AppHandle, payload: &FastExit) {
+    if let Ok(json) = serde_json::to_string(payload) {
+        let _ = db::set_setting(app, PENDING_FAST_EXIT_KEY, &json);
+    }
+}
+
+/// Take (read + delete) the pending fast-exit notice, if there is a
+/// fresh one. Consume-on-read: the first check shows it, later checks
+/// get nothing, and a stale notice is dropped silently.
+pub fn take_pending_fast_exit(app: &AppHandle) -> Option<FastExit> {
+    let raw = db::get_setting(app, PENDING_FAST_EXIT_KEY).ok()??;
+    let _ = db::clear_setting(app, PENDING_FAST_EXIT_KEY);
+    let payload: FastExit = serde_json::from_str(&raw).ok()?;
+    if pending_fast_exit_is_fresh(payload.created_at_unix, now_unix()) {
+        Some(payload)
+    } else {
+        None
+    }
 }
 
 /// Launch a game.
@@ -87,15 +145,19 @@ fn launch_exe(
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_secs(3));
         match child.try_wait() {
-            Ok(Some(status)) if !status.success() => {
-                let _ = app_handle.emit(
-                    "launch-fast-exit",
-                    FastExit {
-                        game_name,
-                        game_key,
-                        exe_path: exe_owned,
-                    },
-                );
+            Ok(Some(status)) if should_report_fast_exit(true, status.success()) => {
+                let payload = FastExit {
+                    game_name,
+                    game_key,
+                    exe_path: exe_owned,
+                    created_at_unix: now_unix(),
+                };
+                // Live event (fast path — only reaches a window that is
+                // open right now) AND the persisted notice (reliable
+                // path — the frontend picks it up on the next (re)start
+                // or restore, even if this window is hidden or gone).
+                let _ = app_handle.emit("launch-fast-exit", payload.clone());
+                record_pending_fast_exit(&app_handle, &payload);
             }
             _ => {}
         }

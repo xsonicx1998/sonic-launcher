@@ -110,6 +110,25 @@ pub fn destroy_launcher_window(app: &AppHandle) {
     }
 }
 
+/// Whether a runtime `ExitRequested` event should be prevented.
+///
+/// v0.2.10 — the diagnosed cause of the v0.2.9 live failure (proven
+/// from the tauri 2.12.7 / tauri-runtime-wry 2.12.5 sources in
+/// Cargo.lock): the runtime's `Destroyed` handler emits
+/// `ExitRequested { code: None }` and sets `ControlFlow::Exit`
+/// whenever the last window is destroyed, unless the app prevents
+/// it. A tray icon does NOT keep the event loop alive — the runtime
+/// only checks the window list. Our app used the default
+/// `.run(context)` with an empty callback, so nothing ever prevented
+/// it: destroying the window on game launch ended the whole process
+/// (no host left to recreate the window, no tray icon, no fail-soft
+/// notice). `code: Some(_)` comes from an explicit
+/// `AppHandle::exit` / `restart` (e.g. the tray "Quit" item) and
+/// must be allowed through, or the app could never quit.
+pub fn should_prevent_exit(exit_code: Option<i32>) -> bool {
+    exit_code.is_none()
+}
+
 /// Start a managed game session: start the playtime session, spawn
 /// the exit watcher, then destroy the launcher window. The watcher
 /// ends the session and recreates the window when the game exits.
@@ -182,5 +201,16 @@ mod tests {
         assert!(!should_recreate_window(LauncherWindow::Destroyed, 3));
         assert!(!should_recreate_window(LauncherWindow::Destroyed, 4));
         assert!(!should_recreate_window(LauncherWindow::Open, 0));
+    }
+
+    #[test]
+    fn exit_request_prevented_only_for_window_lifecycle_exits() {
+        // code None: the last window was destroyed / user interaction
+        // — the host must stay alive in the tray.
+        assert!(should_prevent_exit(None));
+        // code Some: an explicit exit/restart (tray "Quit") — the
+        // app must be allowed to end, or it could never quit.
+        assert!(!should_prevent_exit(Some(0)));
+        assert!(!should_prevent_exit(Some(1)));
     }
 }

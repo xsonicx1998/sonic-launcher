@@ -2709,6 +2709,14 @@ pub mod session_pure {
         window == LauncherWindow::Destroyed && attempts < MAX_RECREATE_ATTEMPTS
     }
 
+    /// v0.2.10: prevent the runtime's exit request when the last
+    /// window is destroyed (code None) — the tray host must stay
+    /// alive to recreate the window on game exit. An explicit exit
+    /// (code Some, e.g. the tray "Quit" item) goes through.
+    pub fn should_prevent_exit(exit_code: Option<i32>) -> bool {
+        exit_code.is_none()
+    }
+
     #[cfg(test)]
     mod tests {
         use super::*;
@@ -2726,6 +2734,13 @@ pub mod session_pure {
             assert!(!should_recreate_window(LauncherWindow::Destroyed, 3));
             assert!(!should_recreate_window(LauncherWindow::Destroyed, 4));
             assert!(!should_recreate_window(LauncherWindow::Open, 0));
+        }
+
+        #[test]
+        fn exit_request_prevented_only_for_window_lifecycle_exits() {
+            assert!(should_prevent_exit(None));
+            assert!(!should_prevent_exit(Some(0)));
+            assert!(!should_prevent_exit(Some(1)));
         }
     }
 }

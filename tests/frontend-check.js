@@ -933,6 +933,43 @@ async function main() {
     delete mockSettings.minimize_on_launch;
   });
 
+  console.log('Host stays alive (v0.2.10):');
+  await check('refreshGames fetches the pending fast-exit (notice surfaces after a window recreate)', async () => {
+    useRealSelectGame = true; useRealRender = true; useRealRefreshGames = true;
+    mockGames = [{ key: 'scan-9', name: 'Fail', source: 'scan', appid: null, exe_path: 'C:\\Games\\Fail\\fail.exe', launch_uri: null, folder: 'C:\\Games\\Fail', confidence: 'high', pick_source: 'name', has_override: false, art_failed: false, art_is_icon: false }];
+    mockPendingFastExit = { game_name: 'Fail', game_key: 'scan-9' };
+    mockCachedMusic = null;
+    GAMES = [];
+    sel = -1;
+    tileEls = [];
+    const n = getEl('fastExitNotice');
+    n.style.display = 'none';
+    invokeLog.length = 0;
+    refreshGames();
+    await sleep(50);
+    assert(invokeLog.some((c) => c.cmd === 'get_pending_fast_exit'), 'recreated window must ask for the pending notice on load');
+    assert.strictEqual(n.style.display, 'block', 'notice should show after the recreate');
+    assert(getEl('fastExitText').textContent.includes('Fail'), 'notice should name the game');
+    hideFastExitNotice();
+    mockPendingFastExit = null;
+    useRealSelectGame = false; useRealRender = false; useRealRefreshGames = false;
+  });
+  await check('refreshGames with no pending notice shows nothing (consume-on-read)', async () => {
+    useRealSelectGame = true; useRealRender = true; useRealRefreshGames = true;
+    mockGames = [{ key: 'scan-9', name: 'Fail', source: 'scan', appid: null, exe_path: 'C:\\Games\\Fail\\fail.exe', launch_uri: null, folder: 'C:\\Games\\Fail', confidence: 'high', pick_source: 'name', has_override: false, art_failed: false, art_is_icon: false }];
+    mockPendingFastExit = null;
+    mockCachedMusic = null;
+    GAMES = [];
+    sel = -1;
+    tileEls = [];
+    const n = getEl('fastExitNotice');
+    n.style.display = 'none';
+    refreshGames();
+    await sleep(50);
+    assert.strictEqual(n.style.display, 'none', 'no notice when none is pending');
+    useRealSelectGame = false; useRealRender = false; useRealRefreshGames = false;
+  });
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 }

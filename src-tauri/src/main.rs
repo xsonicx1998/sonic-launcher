@@ -443,10 +443,41 @@ fn main() {
             // System tray: the ~4 MB host stays here while a game runs
             // and the window is destroyed. Clicking the icon brings
             // the launcher window back (recreating it if needed).
+            //
+            // v0.2.10: two things keep the host alive, and BOTH are
+            // needed. (1) The tray icon is the only way back to the
+            // window once it is destroyed — it must actually exist:
+            // `default_window_icon()` is Option, so a missing icon
+            // used to skip tray creation entirely. (2) A tray icon
+            // alone does NOT keep the process alive: the Tauri
+            // runtime asks to exit when the last window is
+            // destroyed, and only the run callback in main() can
+            // prevent that. Without (2) the v0.2.9 build exited the
+            // whole process on Play — no host, no tray icon, no
+            // window recreation, no fail-soft notice.
+            //
+            // The menu is also the only way to quit: the window is
+            // borderless (no close button), and with exit prevented
+            // the app never ends on its own. "Quit" calls app.exit,
+            // which the run callback lets through (code Some).
             if let Some(icon) = app.default_window_icon() {
+                let menu = tauri::menu::MenuBuilder::new(app)
+                    .text("show", "Show Launcher")
+                    .separator()
+                    .text("quit", "Quit")
+                    .build()?;
                 let _tray = tauri::tray::TrayIconBuilder::with_id("main")
                     .icon(icon.clone())
+                    .menu(&menu)
                     .tooltip("Sonic Launcher")
+                    .on_menu_event(|app, event| {
+                        if event.id() == "quit" {
+                            app.exit(0);
+                        } else if event.id() == "show" {
+                            let handle = app.clone();
+                            let _ = session::show_or_recreate_window(&handle);
+                        }
+                    })
                     .on_tray_icon_event(|tray, event| {
                         if let tauri::tray::TrayIconEvent::Click { .. } = event {
                             let handle = tray.app_handle().clone();
@@ -454,6 +485,15 @@ fn main() {
                         }
                     })
                     .build(app)?;
+            } else {
+                // No icon, no tray: destroying the window would
+                // strand a live process with no way back to the UI.
+                // Loud on stderr (visible when run from a terminal);
+                // this must never happen in a real build — the icon
+                // is embedded by tauri-build from src-tauri/icons/.
+                eprintln!(
+                    "WARNING: Sonic Launcher has no default window icon; no tray icon was created"
+                );
             }
             Ok(())
         })
@@ -503,6 +543,21 @@ fn main() {
             show_launcher_window,
             get_pending_fast_exit
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Sonic Launcher");
+        .build(tauri::generate_context!())
+        .expect("error while building Sonic Launcher")
+        .run(|_app, event| match event {
+            // v0.2.10: the runtime asks to exit (code None) when the
+            // last window is destroyed. Destroying the window on game
+            // launch must NOT end the process — the tray host stays
+            // alive and recreates the window on game exit, and the
+            // persisted fail-soft notice surfaces after the
+            // recreate. Only an explicit exit request (code Some,
+            // e.g. the tray "Quit" item calling app.exit) may end it.
+            tauri::RunEvent::ExitRequested { api, code, .. } => {
+                if session::should_prevent_exit(code) {
+                    api.prevent_exit();
+                }
+            }
+            _ => {}
+        });
 }

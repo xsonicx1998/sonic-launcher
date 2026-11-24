@@ -10,6 +10,19 @@
 //! logged). On any SteamGridDB failure we fall back to the Steam CDN (or
 //! to no art for non-Steam games).
 //!
+//! Keyless source (v0.2.5): for scanned games with no Steam appid and
+//! no saved SGDB key, the folder name is resolved through the free
+//! Steam store search, then the free GOG Catalog as a secondary
+//! fallback — no key, no login. Matching is strict (exact match, or
+//! >= 0.85 similarity with a >= 0.05 margin; junk like soundtracks
+//! and demos is filtered), hits and misses are cached in SQLite
+//! (`resolved_appid` / `art_lookup_failed_at` / `art_source` on
+//! `scanned_games`), and lookups run in a background worker after a
+//! scan finishes. Only a numeric Steam id is ever taken from the
+//! store search JSON; GOG covers come from GOG's own image host
+//! only. A manual cover (picked file, typed AppID, pasted image
+//! URL) is never overwritten by an automatic lookup.
+//!
 //! Files are cached in `%APPDATA%\com.sonic.launcher\art\` and never
 //! re-downloaded while the cache file exists. The frontend gets both the
 //! local path (for `convertFileSrc`) and a base64 data URI (fallback when
@@ -184,6 +197,577 @@ fn sgdb_images(key: &str, game_id: u64) -> Result<(Option<String>, Option<String
 }
 
 // ---------------------------------------------------------------------------
+// Keyless cover lookup (v0.2.5): Steam store search, then GOG Catalog.
+// ---------------------------------------------------------------------------
+
+/// How long a failed keyless lookup blocks automatic retries (days).
+/// The user can always force a retry from the ••• menu ("Retry Art").
+pub const ART_LOOKUP_RETRY_DAYS: i64 = 14;
+
+/// `true` when a failed lookup at `failed_at` (unix seconds) still
+/// blocks an automatic retry at `now`. Pure — unit-tested.
+pub fn art_lookup_blocked(failed_at: Option<i64>, now: i64) -> bool {
+    match failed_at {
+        Some(t) => now.saturating_sub(t) < ART_LOOKUP_RETRY_DAYS * 24 * 3600,
+        None => false,
+    }
+}
+
+/// Edition phrases stripped from the end of a game name before a
+/// store search. Longest first — "game of the year edition" must be
+/// tried before "game of the year".
+const EDITION_SUFFIXES: &[&str] = &[
+    "game of the year edition",
+    "game of the year",
+    "goty edition",
+    "goty",
+    "director's cut",
+    "directors cut",
+    "director cut",
+    "definitive edition",
+    "complete edition",
+    "enhanced edition",
+    "deluxe edition",
+    "ultimate edition",
+    "special edition",
+    "anniversary edition",
+    "collector's edition",
+    "collectors edition",
+    "royal edition",
+    "gold edition",
+    "remastered",
+    "remaster",
+];
+
+/// Clean a folder/game name for a store search: drop ™®©, bracketed
+/// tags like `[Repack]` / `(2024)`, edition suffixes, and turn
+/// `_` `.` `:` `-` `,` into spaces. Pure — unit-tested.
+pub fn sanitize_game_name(name: &str) -> String {
+    let mut s = name.replace(['\u{2122}', '\u{00AE}', '\u{00A9}'], "");
+    // Drop [...] and (...) groups (repack tags, years, notes).
+    loop {
+        let mut dropped = false;
+        for (open, close) in [('[', ']'), ('(', ')')] {
+            if let Some(start) = s.find(open) {
+                if let Some(end) = s[start..].find(close) {
+                    s.replace_range(start..start + end + 1, " ");
+                    dropped = true;
+                }
+            }
+        }
+        if !dropped {
+            break;
+        }
+    }
+    let mut s = s
+        .replace(['_', '.', ':', '-', ',', '\u{2013}', '\u{2014}'], " ")
+        .to_lowercase();
+    // Strip trailing edition phrases, longest first, repeatedly
+    // ("Definitive Edition" after "Game of the Year Edition").
+    loop {
+        let trimmed = s.trim_end();
+        let mut stripped = false;
+        for suffix in EDITION_SUFFIXES {
+            if let Some(base) = trimmed.strip_suffix(suffix) {
+                // Only strip a whole trailing phrase: the char before
+                // it must be a space (or the string start).
+                if base.is_empty() || base.ends_with(' ') {
+                    s = base.trim_end().to_string();
+                    stripped = true;
+                    break;
+                }
+            }
+        }
+        if !stripped {
+            break;
+        }
+    }
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// A whole word that is a Roman numeral, as an Arabic digit.
+/// Only whole words count — `vi` inside `civil` is not a numeral.
+fn roman_to_arabic(word: &str) -> Option<&'static str> {
+    match word {
+        "i" => Some("1"),
+        "ii" => Some("2"),
+        "iii" => Some("3"),
+        "iv" => Some("4"),
+        "v" => Some("5"),
+        "vi" => Some("6"),
+        "vii" => Some("7"),
+        "viii" => Some("8"),
+        "ix" => Some("9"),
+        "x" => Some("10"),
+        _ => None,
+    }
+}
+
+/// Normalize a name for comparison: lowercase, punctuation to word
+/// breaks, Roman numerals to digits, single spaces. Pure.
+pub fn normalize_name(name: &str) -> String {
+    let lower = name.to_lowercase();
+    let mut tokens: Vec<String> = Vec::new();
+    for raw in lower.split(|c: char| !c.is_alphanumeric()) {
+        if raw.is_empty() {
+            continue;
+        }
+        if let Some(d) = roman_to_arabic(raw) {
+            tokens.push(d.to_string());
+        } else {
+            tokens.push(raw.to_string());
+        }
+    }
+    tokens.join(" ")
+}
+
+/// Single-word junk markers: a candidate whose name has one of these
+/// words is not the game itself (soundtrack, demo, ...).
+const JUNK_WORDS: &[&str] = &[
+    "soundtrack",
+    "ost",
+    "demo",
+    "beta",
+    "playtest",
+    "artbook",
+    "dlc",
+    "upgrade",
+];
+/// Multi-word junk markers (checked as phrases).
+const JUNK_PHRASES: &[&str] = &["dedicated server", "season pass"];
+
+/// `true` when a candidate title is junk for this game — its name
+/// carries a soundtrack/demo/server/... marker that the folder name
+/// itself does not have. Words match whole tokens only, so "ghost"
+/// never trips the "ost" marker. Pure — unit-tested.
+pub fn is_junk_name(candidate_norm: &str, folder_norm: &str) -> bool {
+    for word in JUNK_WORDS {
+        if candidate_norm.split(' ').any(|t| t == *word)
+            && !folder_norm.split(' ').any(|t| t == *word)
+        {
+            return true;
+        }
+    }
+    for phrase in JUNK_PHRASES {
+        if candidate_norm.contains(phrase) && !folder_norm.contains(phrase) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Token-set (Jaccard) similarity of two normalized names, 0.0–1.0.
+/// Pure — unit-tested.
+pub fn token_similarity(a_norm: &str, b_norm: &str) -> f64 {
+    let a: std::collections::HashSet<&str> = a_norm.split(' ').filter(|t| !t.is_empty()).collect();
+    let b: std::collections::HashSet<&str> = b_norm.split(' ').filter(|t| !t.is_empty()).collect();
+    if a.is_empty() || b.is_empty() {
+        return 0.0;
+    }
+    let inter = a.intersection(&b).count() as f64;
+    let union = a.union(&b).count() as f64;
+    inter / union
+}
+
+/// Pick the best candidate for a folder name, or `None`:
+/// - Tier 1: a candidate whose normalized name equals the folder's —
+///   picked immediately, whatever else is in the list.
+/// - Tier 2: best token similarity >= 0.85, beating #2 by >= 0.05.
+/// A missing cover is better than the wrong cover, so ties and
+/// near-ties return `None`. Pure — unit-tested.
+pub fn pick_match(folder_name: &str, candidates: &[String]) -> Option<usize> {
+    let folder_norm = normalize_name(&sanitize_game_name(folder_name));
+    if folder_norm.is_empty() {
+        return None;
+    }
+    let mut scored: Vec<(usize, f64)> = Vec::new();
+    for (i, cand) in candidates.iter().enumerate() {
+        let cand_norm = normalize_name(&sanitize_game_name(cand));
+        if cand_norm.is_empty() || is_junk_name(&cand_norm, &folder_norm) {
+            continue;
+        }
+        if cand_norm == folder_norm {
+            return Some(i); // Tier 1: exact match wins immediately.
+        }
+        scored.push((i, token_similarity(&folder_norm, &cand_norm)));
+    }
+    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    let Some(&(top_i, top_s)) = scored.first() else {
+        return None;
+    };
+    if top_s < 0.85 {
+        return None;
+    }
+    if let Some(&(_, second_s)) = scored.get(1) {
+        if top_s - second_s < 0.05 {
+            return None; // too close to call
+        }
+    }
+    Some(top_i)
+}
+
+/// Parse a Steam storesearch response into `(appid, name)` pairs,
+/// keeping only `type == "app"`. All fields are `Option` — a Steam
+/// JSON schema tweak never panics. Pure — unit-tested.
+pub fn parse_storesearch(json: &serde_json::Value) -> Vec<(u32, String)> {
+    let mut out = Vec::new();
+    let Some(items) = json.get("items").and_then(|i| i.as_array()) else {
+        return out;
+    };
+    for item in items {
+        let appid = item
+            .get("id")
+            .and_then(|i| i.as_u64())
+            .and_then(|i| u32::try_from(i).ok());
+        let name = item.get("name").and_then(|n| n.as_str());
+        let kind = item.get("type").and_then(|t| t.as_str());
+        if let (Some(appid), Some(name)) = (appid, name) {
+            if kind == Some("app") {
+                out.push((appid, name.to_string()));
+            }
+        }
+    }
+    out
+}
+
+/// One GOG Catalog product, as far as art is concerned.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GogCover {
+    pub title: String,
+    /// Portrait cover (600x900-ish) — the tile and the capsule.
+    pub vertical: Option<String>,
+    /// Wide cover (16:9) — the hero background.
+    pub horizontal: Option<String>,
+}
+
+/// Parse a GOG Catalog response into products, keeping only
+/// `productType` "game" or "pack" (never "dlc" / "extras") and only
+/// products that have at least one cover URL. All fields are
+/// `Option` — a GOG JSON schema tweak never panics. Pure.
+pub fn parse_gog_catalog(json: &serde_json::Value) -> Vec<GogCover> {
+    let mut out = Vec::new();
+    let Some(products) = json.get("products").and_then(|p| p.as_array()) else {
+        return out;
+    };
+    for item in products {
+        let kind = item.get("productType").and_then(|t| t.as_str());
+        if !matches!(kind, Some("game") | Some("pack")) {
+            continue;
+        }
+        let Some(title) = item.get("title").and_then(|t| t.as_str()) else {
+            continue;
+        };
+        let vertical = item
+            .get("coverVertical")
+            .and_then(|u| u.as_str())
+            .filter(|u| !u.is_empty())
+            .map(|u| u.to_string());
+        let horizontal = item
+            .get("coverHorizontal")
+            .and_then(|u| u.as_str())
+            .filter(|u| !u.is_empty())
+            .map(|u| u.to_string());
+        if vertical.is_none() && horizontal.is_none() {
+            continue;
+        }
+        out.push(GogCover {
+            title: title.to_string(),
+            vertical,
+            horizontal,
+        });
+    }
+    out
+}
+
+/// Validate a user-pasted image URL: https only, no whitespace
+/// (same strictness as the Paste Music URL check). Pure.
+pub fn validate_image_url(url: &str) -> Result<(), String> {
+    let url = url.trim();
+    if url.is_empty() {
+        return Err("image URL is empty".to_string());
+    }
+    if !url.starts_with("https://") {
+        return Err("image URL must start with https://".to_string());
+    }
+    if url.chars().any(|c| c.is_whitespace()) {
+        return Err("image URL must not contain whitespace".to_string());
+    }
+    Ok(())
+}
+
+/// Failure of one keyless lookup attempt.
+pub enum LookupError {
+    /// HTTP 429 or 403 — stop the session's remaining lookups.
+    RateLimited,
+    /// Anything else (network, timeout, oversize, bad JSON).
+    Failed(String),
+}
+
+const STORESEARCH_API: &str = "https://store.steampowered.com/api/storesearch/";
+const GOG_CATALOG_API: &str = "https://catalog.gog.com/v1/catalog";
+/// 5 s timeout and 512 KB cap for the small JSON lookups.
+const LOOKUP_TIMEOUT_SECS: u64 = 5;
+const LOOKUP_MAX_BYTES: usize = 512 * 1024;
+
+/// One capped GET with a single retry on a plain failure (never on a
+/// rate limit). Returns the body bytes, or the error.
+fn lookup_get(url: &str) -> Result<Vec<u8>, LookupError> {
+    for attempt in 0..2 {
+        match crate::http::get_capped(url, LOOKUP_TIMEOUT_SECS, LOOKUP_MAX_BYTES) {
+            crate::http::CappedGet::Ok(bytes) => return Ok(bytes),
+            crate::http::CappedGet::RateLimited => return Err(LookupError::RateLimited),
+            crate::http::CappedGet::Failed(e) => {
+                if attempt == 1 {
+                    return Err(LookupError::Failed(e));
+                }
+                // One retry on a network error, then give up.
+            }
+        }
+    }
+    Err(LookupError::Failed("lookup failed".to_string()))
+}
+
+/// Resolve a folder name to a Steam appid via the free store search.
+/// Only the numeric id is taken from the JSON — the art itself always
+/// comes from the hardcoded Steam CDN URLs.
+pub fn resolve_steam_appid(name: &str) -> Result<Option<u32>, LookupError> {
+    let clean = sanitize_game_name(name);
+    if clean.is_empty() {
+        return Ok(None);
+    }
+    let url = format!(
+        "{STORESEARCH_API}?term={}&l=english&cc=US",
+        crate::http::url_encode(&clean)
+    );
+    let bytes = lookup_get(&url)?;
+    let json: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|e| LookupError::Failed(format!("bad Steam JSON: {e}")))?;
+    let items = parse_storesearch(&json);
+    let names: Vec<String> = items.iter().map(|(_, n)| n.clone()).collect();
+    Ok(pick_match(name, &names).map(|i| items[i].0))
+}
+
+/// Resolve a folder name to GOG cover art via the free GOG Catalog
+/// (no key). The cover URLs come from GOG's own image host only —
+/// anything else is rejected before download (see `is_gog_cover_url`).
+pub fn resolve_gog_cover(name: &str) -> Result<Option<GogCover>, LookupError> {
+    let clean = sanitize_game_name(name);
+    if clean.is_empty() {
+        return Ok(None);
+    }
+    let url = format!(
+        "{GOG_CATALOG_API}?query={}&limit=5",
+        crate::http::url_encode(&format!("like:{clean}"))
+    );
+    let bytes = lookup_get(&url)?;
+    let json: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|e| LookupError::Failed(format!("bad GOG JSON: {e}")))?;
+    let products = parse_gog_catalog(&json);
+    let names: Vec<String> = products.iter().map(|p| p.title.clone()).collect();
+    Ok(pick_match(name, &names).map(|i| products[i].clone()))
+}
+
+/// GOG serves its covers from this host only. A cover URL anywhere
+/// else is never downloaded.
+fn is_gog_cover_url(url: &str) -> bool {
+    url.starts_with("https://images.gog-statics.com/")
+}
+
+/// "Auto-fetch cover art from Steam" (Settings toggle). ON by
+/// default — a missing setting means enabled.
+pub fn is_auto_fetch_art_enabled(app: &AppHandle) -> bool {
+    db::get_setting(app, "auto_fetch_art")
+        .ok()
+        .flatten()
+        .map(|v| v.trim() != "0")
+        .unwrap_or(true)
+}
+
+/// What one keyless art resolution for a scanned game came to.
+pub enum ArtResolve {
+    /// Art is now on disk (downloaded, or already cached — the next
+    /// render retries a download that failed on the network).
+    Found,
+    /// No store has this game (failure recorded for the cooldown).
+    NotFound,
+    /// A recent failure still blocks automatic retries.
+    Blocked,
+    /// The store rate-limited us — stop the session's lookups.
+    RateLimited,
+    /// Network/parse failure — nothing recorded, retry later.
+    Failed,
+    /// Auto-fetch is off.
+    Disabled,
+    /// A manual cover is set — automatic lookups never touch it.
+    Manual,
+    /// Not a scanned game (no DB row to cache in).
+    NotScanned,
+}
+
+/// Download the three Steam CDN images for an appid. Returns `true`
+/// when the tile file exists afterwards.
+fn download_steam_art(app: &AppHandle, game_key: &str, appid: u32) -> bool {
+    let Ok(dir) = art_dir(app) else {
+        return false;
+    };
+    let (header_url, hero_url, capsule_url) = steam_cdn_urls(appid);
+    let tile = dir.join(file_name(game_key, "header"));
+    let hero = dir.join(file_name(game_key, "hero"));
+    let capsule = dir.join(file_name(game_key, "capsule"));
+    download_art(&header_url, &tile, None);
+    download_art(&hero_url, &hero, None);
+    download_art(&capsule_url, &capsule, None);
+    tile.is_file()
+}
+
+/// Download a GOG cover: portrait to tile + capsule, wide to hero
+/// (portrait again when no wide cover exists; wide as the tile when
+/// no portrait exists). Only URLs on GOG's own image host are
+/// fetched. Returns `true` when the tile exists afterwards.
+fn download_gog_art(app: &AppHandle, game_key: &str, cover: &GogCover) -> bool {
+    let Ok(dir) = art_dir(app) else {
+        return false;
+    };
+    let tile = dir.join(file_name(game_key, "header"));
+    let hero = dir.join(file_name(game_key, "hero"));
+    let capsule = dir.join(file_name(game_key, "capsule"));
+    if let Some(url) = &cover.vertical {
+        if is_gog_cover_url(url) {
+            download_art(url, &tile, None);
+            let _ = std::fs::copy(&tile, &capsule);
+        }
+    }
+    match &cover.horizontal {
+        Some(url) if is_gog_cover_url(url) => {
+            download_art(url, &hero, None);
+        }
+        _ => {
+            // No wide cover: reuse the portrait as the hero.
+            let _ = std::fs::copy(&tile, &hero);
+        }
+    }
+    if !tile.is_file() {
+        // No portrait cover: fall back to the wide one as the tile.
+        if let Some(url) = &cover.horizontal {
+            if is_gog_cover_url(url) {
+                download_art(url, &tile, None);
+                let _ = std::fs::copy(&tile, &capsule);
+            }
+        }
+    }
+    tile.is_file()
+}
+
+/// Resolve art for one scanned game: cached Steam appid first, then
+/// the Steam store search, then the GOG Catalog. Hits are cached in
+/// the DB; a double miss records the failure time (14-day cooldown).
+/// Never touches a game with a manual cover.
+pub fn resolve_art_for_game(app: &AppHandle, game_key: &str, name: &str) -> ArtResolve {
+    let Some(id) = db::scanned_id_from_key(game_key) else {
+        return ArtResolve::NotScanned;
+    };
+    let Ok(Some(game)) = db::get_scanned_game(app, id) else {
+        return ArtResolve::NotScanned;
+    };
+    if game.art_source.as_deref() == Some("manual") {
+        return ArtResolve::Manual;
+    }
+    // A cached Steam appid: download the CDN art, no lookup needed.
+    if let Some(appid) = game.resolved_appid.and_then(|a| u32::try_from(a).ok()) {
+        download_steam_art(app, game_key, appid);
+        return ArtResolve::Found;
+    }
+    // A cached GOG hit: the files are already on disk.
+    if game.art_source.as_deref() == Some("gog") {
+        return ArtResolve::Found;
+    }
+    if !is_auto_fetch_art_enabled(app) {
+        return ArtResolve::Disabled;
+    }
+    if art_lookup_blocked(game.art_lookup_failed_at, db::now()) {
+        return ArtResolve::Blocked;
+    }
+    // Steam store search first.
+    match resolve_steam_appid(name) {
+        Ok(Some(appid)) => {
+            download_steam_art(app, game_key, appid);
+            let _ = db::set_art_resolved(app, id, appid, "steam");
+            ArtResolve::Found
+        }
+        Ok(None) => {
+            // Then the GOG Catalog.
+            match resolve_gog_cover(name) {
+                Ok(Some(cover)) => {
+                    if download_gog_art(app, game_key, &cover) {
+                        let _ = db::set_art_source(app, id, "gog");
+                        ArtResolve::Found
+                    } else {
+                        let _ = db::mark_art_lookup_failed(app, id);
+                        ArtResolve::NotFound
+                    }
+                }
+                Ok(None) => {
+                    let _ = db::mark_art_lookup_failed(app, id);
+                    ArtResolve::NotFound
+                }
+                Err(LookupError::RateLimited) => ArtResolve::RateLimited,
+                Err(LookupError::Failed(_)) => ArtResolve::Failed,
+            }
+        }
+        Err(LookupError::RateLimited) => ArtResolve::RateLimited,
+        Err(LookupError::Failed(_)) => ArtResolve::Failed,
+    }
+}
+
+/// Background worker: after a scan finishes, resolve art for every
+/// scanned game that still needs it — sequential, ~400 ms between
+/// calls, at most one retry per lookup (inside the resolvers).
+/// Stops the session's remaining lookups on a rate limit, and skips
+/// games with a manual cover, a cached hit, a recent failure, or
+/// art already on disk. Runs on its own thread; never blocks the UI.
+pub fn run_art_lookup_worker(app: &AppHandle) {
+    if is_steamgriddb_key_set(app) {
+        // A saved SGDB key takes precedence — get_game_art uses it.
+        return;
+    }
+    if !is_auto_fetch_art_enabled(app) {
+        return;
+    }
+    let Ok(games) = db::list_scanned_games(app) else {
+        return;
+    };
+    for game in games {
+        if game.art_source.as_deref() == Some("manual")
+            || game.resolved_appid.is_some()
+            || game.art_source.as_deref() == Some("gog")
+        {
+            continue;
+        }
+        if art_lookup_blocked(game.art_lookup_failed_at, db::now()) {
+            continue;
+        }
+        let key = format!("scan-{}", game.id);
+        // Art already on disk (from an earlier run)? Skip the lookup.
+        if let Ok(dir) = art_dir(app) {
+            let tile = dir.join(file_name(&key, "header"));
+            if std::fs::metadata(&tile)
+                .map(|m| m.len() > 0)
+                .unwrap_or(false)
+            {
+                continue;
+            }
+        }
+        if matches!(
+            resolve_art_for_game(app, &key, &game.name),
+            ArtResolve::RateLimited
+        ) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(400));
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Public API.
 // ---------------------------------------------------------------------------
 
@@ -263,8 +847,13 @@ fn download_art(url: &str, dest: &PathBuf, auth: Option<&str>) -> bool {
 /// Download (or reuse from cache) the art for one game.
 ///
 /// - Steam games (`appid` set): Steam CDN first.
-/// - Other games: SteamGridDB by name when a key is saved; otherwise no
-///   art (the frontend keeps the Sonic-gradient placeholder).
+/// - Scanned games with a manual cover: the cached files only —
+///   automatic lookups and SGDB never touch them.
+/// - Scanned games with a cached Steam appid: the Steam CDN (only
+///   when no SGDB key is saved — a saved key takes precedence).
+/// - Other games: SteamGridDB by name when a key is saved; otherwise
+///   the keyless auto-fetch (Steam store search, then GOG Catalog)
+///   when it is enabled.
 ///
 /// Never errors on download failure — returns whatever art could be
 /// obtained (possibly none), so the UI never breaks on a bad network.
@@ -284,6 +873,23 @@ pub fn get_game_art(app: &AppHandle, game_key: &str, appid: Option<u32>, name: &
         return build_art(&tile, &hero, &capsule);
     }
 
+    // Scanned games: a manual cover wins over everything, and a
+    // cached Steam appid wins over the keyless lookup (but not over
+    // a saved SGDB key — that behavior stays as-is).
+    if let Some(scan_id) = db::scanned_id_from_key(game_key) {
+        if let Ok(Some(game)) = db::get_scanned_game(app, scan_id) {
+            if game.art_source.as_deref() == Some("manual") {
+                return build_art(&tile, &hero, &capsule);
+            }
+            if let Some(resolved) = game.resolved_appid.and_then(|a| u32::try_from(a).ok()) {
+                if steamgriddb_key(app).is_none() {
+                    download_steam_art(app, game_key, resolved);
+                    return build_art(&tile, &hero, &capsule);
+                }
+            }
+        }
+    }
+
     // Non-Steam: SteamGridDB by name, only when a key is saved.
     if let Some(key) = steamgriddb_key(app) {
         if let Ok(results) = sgdb_search(&key, name) {
@@ -300,9 +906,121 @@ pub fn get_game_art(app: &AppHandle, game_key: &str, appid: Option<u32>, name: &
                 }
             }
         }
+    } else {
+        // No key: keyless auto-fetch (Steam store search, then GOG).
+        let _ = resolve_art_for_game(app, game_key, name);
     }
 
     build_art(&tile, &hero, &capsule)
+}
+
+/// Let the user pick a local image as this game's cover. The image
+/// is copied into the art dir (tile + hero + capsule) and marked
+/// manual, so rescans and automatic lookups never overwrite it.
+/// Returns the copied path, or `None` when the user cancels.
+pub fn pick_cover_image(app: &AppHandle, game_key: &str) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("Images", &["jpg", "jpeg", "png", "webp"])
+        .set_title("Choose cover art")
+        .blocking_pick_file();
+    let Some(file) = picked else {
+        return Ok(None);
+    };
+    let Some(src) = file.as_path() else {
+        return Err("picked file has no local path".to_string());
+    };
+    let bytes = std::fs::read(src).map_err(|e| format!("cannot read image: {e}"))?;
+    if bytes.len() > MAX_ART_BYTES || !is_image_bytes(&bytes) {
+        return Err("not a supported image (JPG / PNG / WebP, up to 10 MB)".to_string());
+    }
+    let dir = art_dir(app)?;
+    let tile = dir.join(file_name(game_key, "header"));
+    let hero = dir.join(file_name(game_key, "hero"));
+    let capsule = dir.join(file_name(game_key, "capsule"));
+    std::fs::write(&tile, &bytes).map_err(|e| format!("cannot save cover: {e}"))?;
+    let _ = std::fs::copy(&tile, &hero);
+    let _ = std::fs::copy(&tile, &capsule);
+    if let Some(id) = db::scanned_id_from_key(game_key) {
+        let _ = db::set_art_source(app, id, "manual");
+    }
+    Ok(Some(tile.to_string_lossy().into_owned()))
+}
+
+/// Set a game's cover from a Steam AppID the user typed in: verify
+/// the AppID has CDN art first, then cache it as a manual cover.
+/// Returns an error (and persists nothing) when Steam has no art
+/// for that AppID.
+pub fn set_cover_art_appid(app: &AppHandle, game_key: &str, appid: u32) -> Result<(), String> {
+    if appid == 0 {
+        return Err("AppID must be a number greater than 0".to_string());
+    }
+    let dir = art_dir(app)?;
+    let tile = dir.join(file_name(game_key, "header"));
+    let hero = dir.join(file_name(game_key, "hero"));
+    let capsule = dir.join(file_name(game_key, "capsule"));
+    // Clear any previous cover so a cache hit cannot fake a success.
+    let _ = std::fs::remove_file(&tile);
+    let _ = std::fs::remove_file(&hero);
+    let _ = std::fs::remove_file(&capsule);
+    if !download_steam_art(app, game_key, appid) {
+        return Err(format!("Steam has no cover art for AppID {appid}"));
+    }
+    if let Some(id) = db::scanned_id_from_key(game_key) {
+        let _ = db::set_art_resolved(app, id, appid, "manual");
+    }
+    Ok(())
+}
+
+/// Set a game's cover from a user-pasted image URL: https only, no
+/// whitespace, 10 MB cap, magic-byte check — then saved into the art
+/// dir and marked manual. Never hotlinked: the bytes are downloaded
+/// once and served locally from then on.
+pub fn set_cover_art_url(app: &AppHandle, game_key: &str, url: &str) -> Result<(), String> {
+    let url = url.trim();
+    validate_image_url(url)?;
+    let bytes = match crate::http::get_capped(url, 30, MAX_ART_BYTES) {
+        crate::http::CappedGet::Ok(b) => b,
+        crate::http::CappedGet::RateLimited => {
+            return Err("the image host refused the download (429/403)".to_string());
+        }
+        crate::http::CappedGet::Failed(e) => return Err(e),
+    };
+    if !is_image_bytes(&bytes) {
+        return Err("that URL is not an image (JPG / PNG / WebP)".to_string());
+    }
+    let dir = art_dir(app)?;
+    let tile = dir.join(file_name(game_key, "header"));
+    let hero = dir.join(file_name(game_key, "hero"));
+    let capsule = dir.join(file_name(game_key, "capsule"));
+    std::fs::write(&tile, &bytes).map_err(|e| format!("cannot save cover: {e}"))?;
+    let _ = std::fs::copy(&tile, &hero);
+    let _ = std::fs::copy(&tile, &capsule);
+    if let Some(id) = db::scanned_id_from_key(game_key) {
+        let _ = db::set_art_source(app, id, "manual");
+    }
+    Ok(())
+}
+
+/// "Retry Art" from the ••• menu: forget the last failure and run a
+/// fresh keyless lookup now. Returns a short status for the toast.
+pub fn retry_art(app: &AppHandle, game_key: &str, name: &str) -> Result<String, String> {
+    let Some(id) = db::scanned_id_from_key(game_key) else {
+        return Err("Retry Art is only for scanned games".to_string());
+    };
+    let _ = db::clear_art_lookup_failed(app, id);
+    Ok(match resolve_art_for_game(app, game_key, name) {
+        ArtResolve::Found => "Cover art found".to_string(),
+        ArtResolve::NotFound => "No cover found for this game".to_string(),
+        ArtResolve::Blocked => "Cover lookup was already retried recently".to_string(),
+        ArtResolve::RateLimited => "Steam is rate-limiting lookups — try again later".to_string(),
+        ArtResolve::Failed => "Cover lookup failed (network?) — try again later".to_string(),
+        ArtResolve::Disabled => "Auto-fetch cover art is off in Settings".to_string(),
+        ArtResolve::Manual => "This game has a manual cover".to_string(),
+        ArtResolve::NotScanned => "Retry Art is only for scanned games".to_string(),
+    })
 }
 
 #[cfg(test)]
@@ -371,5 +1089,205 @@ mod tests {
             file_name("weird key/with:chars", "header"),
             "weird_key_with_chars-header.jpg"
         );
+    }
+
+    #[test]
+    fn sanitize_strips_edition_suffixes_brackets_and_marks() {
+        assert_eq!(sanitize_game_name("Cyberpunk 2077"), "cyberpunk 2077");
+        assert_eq!(
+            sanitize_game_name("Cyberpunk 2077 [Repack] (2024)"),
+            "cyberpunk 2077"
+        );
+        assert_eq!(
+            sanitize_game_name("The Witcher 3: Wild Hunt - Game of the Year Edition"),
+            "the witcher 3 wild hunt"
+        );
+        assert_eq!(
+            sanitize_game_name("Sleeping Dogs™ Definitive Edition"),
+            "sleeping dogs"
+        );
+        assert_eq!(sanitize_game_name("Hades II - Director's Cut"), "hades ii");
+        assert_eq!(sanitize_game_name("My_Game.Name GOTY"), "my game name");
+        assert_eq!(sanitize_game_name("[Repack]"), "");
+        // A year that is part of the title is kept (only bracketed
+        // years are dropped).
+        assert_eq!(sanitize_game_name("Battlefield 1942"), "battlefield 1942");
+    }
+
+    #[test]
+    fn normalize_converts_roman_numerals_and_punctuation() {
+        assert_eq!(normalize_name("The Witcher III"), "the witcher 3");
+        assert_eq!(normalize_name("Grand Theft Auto V"), "grand theft auto 5");
+        assert_eq!(normalize_name("Hades II"), "hades 2");
+        assert_eq!(normalize_name("Civilization VI"), "civilization 6");
+        // A numeral inside a word is not converted.
+        assert_eq!(normalize_name("Civil"), "civil");
+        assert_eq!(normalize_name("Baldur's Gate 3"), "baldur s gate 3");
+    }
+
+    #[test]
+    fn junk_filter_drops_soundtracks_and_demos() {
+        let folder = normalize_name("Hades II");
+        assert!(is_junk_name(
+            &normalize_name("Hades II Soundtrack"),
+            &folder
+        ));
+        assert!(is_junk_name(&normalize_name("Hades II Demo"), &folder));
+        assert!(is_junk_name(&normalize_name("Hades II OST"), &folder));
+        assert!(is_junk_name(
+            &normalize_name("Hades II Dedicated Server"),
+            &folder
+        ));
+        assert!(is_junk_name(
+            &normalize_name("Hades II Season Pass"),
+            &folder
+        ));
+        assert!(!is_junk_name(&normalize_name("Hades II"), &folder));
+        // "ghost" must not trip the "ost" marker (whole tokens only).
+        assert!(!is_junk_name(
+            &normalize_name("Ghost of Tsushima"),
+            &normalize_name("Ghost of Tsushima")
+        ));
+        // When the folder itself is the soundtrack, it is not junk.
+        let ost_folder = normalize_name("Hades II Soundtrack");
+        assert!(!is_junk_name(
+            &normalize_name("Hades II Soundtrack"),
+            &ost_folder
+        ));
+    }
+
+    #[test]
+    fn token_similarity_is_jaccard_on_token_sets() {
+        assert!((token_similarity("a b c", "a b c") - 1.0).abs() < 1e-9);
+        assert!(
+            (token_similarity("cyberpunk 2077", "cyberpunk 2077 phantom liberty") - 0.5).abs()
+                < 1e-9
+        );
+        assert_eq!(token_similarity("a b", "c d"), 0.0);
+        assert_eq!(token_similarity("", "a"), 0.0);
+    }
+
+    #[test]
+    fn pick_match_exact_wins_over_earlier_candidates() {
+        let cands = vec![
+            "Cyberpunk 2077: Phantom Liberty".to_string(),
+            "Cyberpunk 2077".to_string(),
+        ];
+        assert_eq!(pick_match("Cyberpunk 2077", &cands), Some(1));
+    }
+
+    #[test]
+    fn pick_match_junk_filtered_and_roman_matched() {
+        let cands = vec![
+            "The Witcher 3 Soundtrack".to_string(),
+            "The Witcher III".to_string(),
+        ];
+        assert_eq!(pick_match("The Witcher 3", &cands), Some(1));
+    }
+
+    #[test]
+    fn pick_match_tie_returns_none_and_clear_winner_wins() {
+        // Two candidates, equally close (>= 0.85) -> too close to call.
+        let tied = vec![
+            "Legend of Zelda Breath of the Wild Master".to_string(),
+            "Legend of Zelda Breath of the Wild Deluxe".to_string(),
+        ];
+        assert_eq!(
+            pick_match("Legend of Zelda Breath of the Wild", &tied),
+            None
+        );
+        // One clear winner, #2 far behind -> pick it.
+        let clear = vec![
+            "Legend of Zelda Breath of the Wild Master".to_string(),
+            "Legend of Zelda Tears of the Kingdom".to_string(),
+        ];
+        assert_eq!(
+            pick_match("Legend of Zelda Breath of the Wild", &clear),
+            Some(0)
+        );
+        // Best below 0.85 -> None.
+        assert_eq!(pick_match("Doom", &["Doom Eternal".to_string()]), None);
+        assert_eq!(pick_match("Doom", &[] as &[String]), None);
+    }
+
+    #[test]
+    fn parse_storesearch_keeps_apps_only() {
+        let json: serde_json::Value = serde_json::from_str(
+            r#"{"total":3,"items":[
+                {"type":"app","name":"Cyberpunk 2077","id":1091500},
+                {"type":"dlc","name":"Cyberpunk 2077: Phantom Liberty","id":2138330},
+                {"type":"app","name":"No Id Here"},
+                {"name":"No Type","id":42}
+            ]}"#,
+        )
+        .unwrap();
+        let out = parse_storesearch(&json);
+        assert_eq!(out, vec![(1091500, "Cyberpunk 2077".to_string())]);
+        assert!(parse_storesearch(&serde_json::json!({})).is_empty());
+        assert!(parse_storesearch(&serde_json::json!({"items": "nope"})).is_empty());
+    }
+
+    #[test]
+    fn parse_gog_catalog_keeps_games_and_packs_with_covers() {
+        let json: serde_json::Value = serde_json::from_str(
+            r#"{"products":[
+                {"id":"1","title":"Cyberpunk 2077","productType":"game",
+                 "coverVertical":"https://images.gog-statics.com/v.jpg",
+                 "coverHorizontal":"https://images.gog-statics.com/h.png"},
+                {"id":"2","title":"Cyberpunk 2077 DLC","productType":"dlc",
+                 "coverVertical":"https://images.gog-statics.com/v2.jpg",
+                 "coverHorizontal":"https://images.gog-statics.com/h2.png"},
+                {"id":"3","title":"No Covers","productType":"game"},
+                {"id":"4","title":"Kingdom Come II Royal","productType":"pack",
+                 "coverVertical":"https://images.gog-statics.com/v3.jpg"}
+            ]}"#,
+        )
+        .unwrap();
+        let out = parse_gog_catalog(&json);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].title, "Cyberpunk 2077");
+        assert_eq!(
+            out[0].vertical.as_deref(),
+            Some("https://images.gog-statics.com/v.jpg")
+        );
+        assert_eq!(
+            out[0].horizontal.as_deref(),
+            Some("https://images.gog-statics.com/h.png")
+        );
+        assert_eq!(out[1].title, "Kingdom Come II Royal");
+        assert!(out[1].horizontal.is_none());
+        assert!(parse_gog_catalog(&serde_json::json!({})).is_empty());
+    }
+
+    #[test]
+    fn art_lookup_blocked_honours_the_14_day_cooldown() {
+        let now = 1_800_000_000i64;
+        assert!(!art_lookup_blocked(None, now));
+        assert!(art_lookup_blocked(Some(now - 13 * 24 * 3600), now));
+        assert!(!art_lookup_blocked(Some(now - 14 * 24 * 3600), now));
+        assert!(!art_lookup_blocked(Some(now - 30 * 24 * 3600), now));
+        assert!(art_lookup_blocked(Some(now), now));
+    }
+
+    #[test]
+    fn validate_image_url_requires_https_and_no_whitespace() {
+        assert!(validate_image_url("https://example.com/cover.jpg").is_ok());
+        assert!(validate_image_url("http://example.com/cover.jpg").is_err());
+        assert!(validate_image_url("https://example.com/a b.jpg").is_err());
+        assert!(validate_image_url("https://example.com/a\nb.jpg").is_err());
+        assert!(validate_image_url("").is_err());
+        assert!(validate_image_url("  https://example.com/c.png  ").is_ok());
+    }
+
+    #[test]
+    fn is_gog_cover_url_allows_only_the_gog_image_host() {
+        assert!(is_gog_cover_url(
+            "https://images.gog-statics.com/abc123.jpg"
+        ));
+        assert!(!is_gog_cover_url(
+            "https://images.gog-statics.com.evil.com/abc.jpg"
+        ));
+        assert!(!is_gog_cover_url("https://cdn.example.com/cover.jpg"));
+        assert!(!is_gog_cover_url("http://images.gog-statics.com/abc.jpg"));
     }
 }

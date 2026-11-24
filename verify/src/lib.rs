@@ -98,6 +98,258 @@ pub mod art_pure {
             .collect();
         format!("{safe}-{kind}.jpg")
     }
+    /// How long a failed keyless lookup blocks automatic retries (days).
+    pub const ART_LOOKUP_RETRY_DAYS: i64 = 14;
+    /// Mirror of `art.rs::art_lookup_blocked`.
+    pub fn art_lookup_blocked(failed_at: Option<i64>, now: i64) -> bool {
+        match failed_at {
+            Some(t) => now.saturating_sub(t) < ART_LOOKUP_RETRY_DAYS * 24 * 3600,
+            None => false,
+        }
+    }
+    const EDITION_SUFFIXES: &[&str] = &[
+        "game of the year edition",
+        "game of the year",
+        "goty edition",
+        "goty",
+        "director's cut",
+        "directors cut",
+        "director cut",
+        "definitive edition",
+        "complete edition",
+        "enhanced edition",
+        "deluxe edition",
+        "ultimate edition",
+        "special edition",
+        "anniversary edition",
+        "collector's edition",
+        "collectors edition",
+        "royal edition",
+        "gold edition",
+        "remastered",
+        "remaster",
+    ];
+    /// Mirror of `art.rs::sanitize_game_name`.
+    pub fn sanitize_game_name(name: &str) -> String {
+        let mut s = name.replace(['\u{2122}', '\u{00AE}', '\u{00A9}'], "");
+        loop {
+            let mut dropped = false;
+            for (open, close) in [('[', ']'), ('(', ')')] {
+                if let Some(start) = s.find(open) {
+                    if let Some(end) = s[start..].find(close) {
+                        s.replace_range(start..start + end + 1, " ");
+                        dropped = true;
+                    }
+                }
+            }
+            if !dropped {
+                break;
+            }
+        }
+        let mut s = s
+            .replace(['_', '.', ':', '-', ',', '\u{2013}', '\u{2014}'], " ")
+            .to_lowercase();
+        loop {
+            let trimmed = s.trim_end();
+            let mut stripped = false;
+            for suffix in EDITION_SUFFIXES {
+                if let Some(base) = trimmed.strip_suffix(suffix) {
+                    if base.is_empty() || base.ends_with(' ') {
+                        s = base.trim_end().to_string();
+                        stripped = true;
+                        break;
+                    }
+                }
+            }
+            if !stripped {
+                break;
+            }
+        }
+        s.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+    fn roman_to_arabic(word: &str) -> Option<&'static str> {
+        match word {
+            "i" => Some("1"),
+            "ii" => Some("2"),
+            "iii" => Some("3"),
+            "iv" => Some("4"),
+            "v" => Some("5"),
+            "vi" => Some("6"),
+            "vii" => Some("7"),
+            "viii" => Some("8"),
+            "ix" => Some("9"),
+            "x" => Some("10"),
+            _ => None,
+        }
+    }
+    /// Mirror of `art.rs::normalize_name`.
+    pub fn normalize_name(name: &str) -> String {
+        let lower = name.to_lowercase();
+        let mut tokens: Vec<String> = Vec::new();
+        for raw in lower.split(|c: char| !c.is_alphanumeric()) {
+            if raw.is_empty() {
+                continue;
+            }
+            if let Some(d) = roman_to_arabic(raw) {
+                tokens.push(d.to_string());
+            } else {
+                tokens.push(raw.to_string());
+            }
+        }
+        tokens.join(" ")
+    }
+    const JUNK_WORDS: &[&str] = &[
+        "soundtrack",
+        "ost",
+        "demo",
+        "beta",
+        "playtest",
+        "artbook",
+        "dlc",
+        "upgrade",
+    ];
+    const JUNK_PHRASES: &[&str] = &["dedicated server", "season pass"];
+    /// Mirror of `art.rs::is_junk_name`.
+    pub fn is_junk_name(candidate_norm: &str, folder_norm: &str) -> bool {
+        for word in JUNK_WORDS {
+            if candidate_norm.split(' ').any(|t| t == *word)
+                && !folder_norm.split(' ').any(|t| t == *word)
+            {
+                return true;
+            }
+        }
+        for phrase in JUNK_PHRASES {
+            if candidate_norm.contains(phrase) && !folder_norm.contains(phrase) {
+                return true;
+            }
+        }
+        false
+    }
+    /// Mirror of `art.rs::token_similarity`.
+    pub fn token_similarity(a_norm: &str, b_norm: &str) -> f64 {
+        let a: std::collections::HashSet<&str> =
+            a_norm.split(' ').filter(|t| !t.is_empty()).collect();
+        let b: std::collections::HashSet<&str> =
+            b_norm.split(' ').filter(|t| !t.is_empty()).collect();
+        if a.is_empty() || b.is_empty() {
+            return 0.0;
+        }
+        let inter = a.intersection(&b).count() as f64;
+        let union = a.union(&b).count() as f64;
+        inter / union
+    }
+    /// Mirror of `art.rs::pick_match`.
+    pub fn pick_match(folder_name: &str, candidates: &[String]) -> Option<usize> {
+        let folder_norm = normalize_name(&sanitize_game_name(folder_name));
+        if folder_norm.is_empty() {
+            return None;
+        }
+        let mut scored: Vec<(usize, f64)> = Vec::new();
+        for (i, cand) in candidates.iter().enumerate() {
+            let cand_norm = normalize_name(&sanitize_game_name(cand));
+            if cand_norm.is_empty() || is_junk_name(&cand_norm, &folder_norm) {
+                continue;
+            }
+            if cand_norm == folder_norm {
+                return Some(i);
+            }
+            scored.push((i, token_similarity(&folder_norm, &cand_norm)));
+        }
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        let Some(&(top_i, top_s)) = scored.first() else {
+            return None;
+        };
+        if top_s < 0.85 {
+            return None;
+        }
+        if let Some(&(_, second_s)) = scored.get(1) {
+            if top_s - second_s < 0.05 {
+                return None;
+            }
+        }
+        Some(top_i)
+    }
+    /// Mirror of `art.rs::parse_storesearch`.
+    pub fn parse_storesearch(json: &serde_json::Value) -> Vec<(u32, String)> {
+        let mut out = Vec::new();
+        let Some(items) = json.get("items").and_then(|i| i.as_array()) else {
+            return out;
+        };
+        for item in items {
+            let appid = item
+                .get("id")
+                .and_then(|i| i.as_u64())
+                .and_then(|i| u32::try_from(i).ok());
+            let name = item.get("name").and_then(|n| n.as_str());
+            let kind = item.get("type").and_then(|t| t.as_str());
+            if let (Some(appid), Some(name)) = (appid, name) {
+                if kind == Some("app") {
+                    out.push((appid, name.to_string()));
+                }
+            }
+        }
+        out
+    }
+    /// Mirror of `art.rs::GogCover`.
+    #[derive(Debug, Clone, Default, PartialEq, Eq)]
+    pub struct GogCover {
+        pub title: String,
+        pub vertical: Option<String>,
+        pub horizontal: Option<String>,
+    }
+    /// Mirror of `art.rs::parse_gog_catalog`.
+    pub fn parse_gog_catalog(json: &serde_json::Value) -> Vec<GogCover> {
+        let mut out = Vec::new();
+        let Some(products) = json.get("products").and_then(|p| p.as_array()) else {
+            return out;
+        };
+        for item in products {
+            let kind = item.get("productType").and_then(|t| t.as_str());
+            if !matches!(kind, Some("game") | Some("pack")) {
+                continue;
+            }
+            let Some(title) = item.get("title").and_then(|t| t.as_str()) else {
+                continue;
+            };
+            let vertical = item
+                .get("coverVertical")
+                .and_then(|u| u.as_str())
+                .filter(|u| !u.is_empty())
+                .map(|u| u.to_string());
+            let horizontal = item
+                .get("coverHorizontal")
+                .and_then(|u| u.as_str())
+                .filter(|u| !u.is_empty())
+                .map(|u| u.to_string());
+            if vertical.is_none() && horizontal.is_none() {
+                continue;
+            }
+            out.push(GogCover {
+                title: title.to_string(),
+                vertical,
+                horizontal,
+            });
+        }
+        out
+    }
+    /// Mirror of `art.rs::validate_image_url`.
+    pub fn validate_image_url(url: &str) -> Result<(), String> {
+        let url = url.trim();
+        if url.is_empty() {
+            return Err("image URL is empty".to_string());
+        }
+        if !url.starts_with("https://") {
+            return Err("image URL must start with https://".to_string());
+        }
+        if url.chars().any(|c| c.is_whitespace()) {
+            return Err("image URL must not contain whitespace".to_string());
+        }
+        Ok(())
+    }
+    /// Mirror of `art.rs::is_gog_cover_url`.
+    pub fn is_gog_cover_url(url: &str) -> bool {
+        url.starts_with("https://images.gog-statics.com/")
+    }
     #[cfg(test)]
     mod tests {
         use super::*;
@@ -164,6 +416,198 @@ pub mod art_pure {
                 file_name("weird key/with:chars", "header"),
                 "weird_key_with_chars-header.jpg"
             );
+        }
+
+        #[test]
+        fn sanitize_strips_edition_suffixes_brackets_and_marks() {
+            assert_eq!(sanitize_game_name("Cyberpunk 2077"), "cyberpunk 2077");
+            assert_eq!(
+                sanitize_game_name("Cyberpunk 2077 [Repack] (2024)"),
+                "cyberpunk 2077"
+            );
+            assert_eq!(
+                sanitize_game_name("The Witcher 3: Wild Hunt - Game of the Year Edition"),
+                "the witcher 3 wild hunt"
+            );
+            assert_eq!(
+                sanitize_game_name("Sleeping Dogs™ Definitive Edition"),
+                "sleeping dogs"
+            );
+            assert_eq!(sanitize_game_name("Hades II - Director's Cut"), "hades ii");
+            assert_eq!(sanitize_game_name("My_Game.Name GOTY"), "my game name");
+            assert_eq!(sanitize_game_name("[Repack]"), "");
+            assert_eq!(sanitize_game_name("Battlefield 1942"), "battlefield 1942");
+        }
+
+        #[test]
+        fn normalize_converts_roman_numerals_and_punctuation() {
+            assert_eq!(normalize_name("The Witcher III"), "the witcher 3");
+            assert_eq!(normalize_name("Grand Theft Auto V"), "grand theft auto 5");
+            assert_eq!(normalize_name("Hades II"), "hades 2");
+            assert_eq!(normalize_name("Civilization VI"), "civilization 6");
+            assert_eq!(normalize_name("Civil"), "civil");
+            assert_eq!(normalize_name("Baldur's Gate 3"), "baldur s gate 3");
+        }
+
+        #[test]
+        fn junk_filter_drops_soundtracks_and_demos() {
+            let folder = normalize_name("Hades II");
+            assert!(is_junk_name(
+                &normalize_name("Hades II Soundtrack"),
+                &folder
+            ));
+            assert!(is_junk_name(&normalize_name("Hades II Demo"), &folder));
+            assert!(is_junk_name(&normalize_name("Hades II OST"), &folder));
+            assert!(is_junk_name(
+                &normalize_name("Hades II Dedicated Server"),
+                &folder
+            ));
+            assert!(is_junk_name(
+                &normalize_name("Hades II Season Pass"),
+                &folder
+            ));
+            assert!(!is_junk_name(&normalize_name("Hades II"), &folder));
+            assert!(!is_junk_name(
+                &normalize_name("Ghost of Tsushima"),
+                &normalize_name("Ghost of Tsushima")
+            ));
+            let ost_folder = normalize_name("Hades II Soundtrack");
+            assert!(!is_junk_name(
+                &normalize_name("Hades II Soundtrack"),
+                &ost_folder
+            ));
+        }
+
+        #[test]
+        fn token_similarity_is_jaccard_on_token_sets() {
+            assert!((token_similarity("a b c", "a b c") - 1.0).abs() < 1e-9);
+            assert!(
+                (token_similarity("cyberpunk 2077", "cyberpunk 2077 phantom liberty") - 0.5).abs()
+                    < 1e-9
+            );
+            assert_eq!(token_similarity("a b", "c d"), 0.0);
+            assert_eq!(token_similarity("", "a"), 0.0);
+        }
+
+        #[test]
+        fn pick_match_exact_wins_over_earlier_candidates() {
+            let cands = vec![
+                "Cyberpunk 2077: Phantom Liberty".to_string(),
+                "Cyberpunk 2077".to_string(),
+            ];
+            assert_eq!(pick_match("Cyberpunk 2077", &cands), Some(1));
+        }
+
+        #[test]
+        fn pick_match_junk_filtered_and_roman_matched() {
+            let cands = vec![
+                "The Witcher 3 Soundtrack".to_string(),
+                "The Witcher III".to_string(),
+            ];
+            assert_eq!(pick_match("The Witcher 3", &cands), Some(1));
+        }
+
+        #[test]
+        fn pick_match_tie_returns_none_and_clear_winner_wins() {
+            let tied = vec![
+                "Legend of Zelda Breath of the Wild Master".to_string(),
+                "Legend of Zelda Breath of the Wild Deluxe".to_string(),
+            ];
+            assert_eq!(
+                pick_match("Legend of Zelda Breath of the Wild", &tied),
+                None
+            );
+            let clear = vec![
+                "Legend of Zelda Breath of the Wild Master".to_string(),
+                "Legend of Zelda Tears of the Kingdom".to_string(),
+            ];
+            assert_eq!(
+                pick_match("Legend of Zelda Breath of the Wild", &clear),
+                Some(0)
+            );
+            assert_eq!(pick_match("Doom", &["Doom Eternal".to_string()]), None);
+            assert_eq!(pick_match("Doom", &[] as &[String]), None);
+        }
+
+        #[test]
+        fn parse_storesearch_keeps_apps_only() {
+            let json: serde_json::Value = serde_json::from_str(
+                r#"{"total":3,"items":[
+                    {"type":"app","name":"Cyberpunk 2077","id":1091500},
+                    {"type":"dlc","name":"Cyberpunk 2077: Phantom Liberty","id":2138330},
+                    {"type":"app","name":"No Id Here"},
+                    {"name":"No Type","id":42}
+                ]}"#,
+            )
+            .unwrap();
+            let out = parse_storesearch(&json);
+            assert_eq!(out, vec![(1091500, "Cyberpunk 2077".to_string())]);
+            assert!(parse_storesearch(&serde_json::json!({})).is_empty());
+            assert!(parse_storesearch(&serde_json::json!({"items": "nope"})).is_empty());
+        }
+
+        #[test]
+        fn parse_gog_catalog_keeps_games_and_packs_with_covers() {
+            let json: serde_json::Value = serde_json::from_str(
+                r#"{"products":[
+                    {"id":"1","title":"Cyberpunk 2077","productType":"game",
+                     "coverVertical":"https://images.gog-statics.com/v.jpg",
+                     "coverHorizontal":"https://images.gog-statics.com/h.png"},
+                    {"id":"2","title":"Cyberpunk 2077 DLC","productType":"dlc",
+                     "coverVertical":"https://images.gog-statics.com/v2.jpg",
+                     "coverHorizontal":"https://images.gog-statics.com/h2.png"},
+                    {"id":"3","title":"No Covers","productType":"game"},
+                    {"id":"4","title":"Kingdom Come II Royal","productType":"pack",
+                     "coverVertical":"https://images.gog-statics.com/v3.jpg"}
+                ]}"#,
+            )
+            .unwrap();
+            let out = parse_gog_catalog(&json);
+            assert_eq!(out.len(), 2);
+            assert_eq!(out[0].title, "Cyberpunk 2077");
+            assert_eq!(
+                out[0].vertical.as_deref(),
+                Some("https://images.gog-statics.com/v.jpg")
+            );
+            assert_eq!(
+                out[0].horizontal.as_deref(),
+                Some("https://images.gog-statics.com/h.png")
+            );
+            assert_eq!(out[1].title, "Kingdom Come II Royal");
+            assert!(out[1].horizontal.is_none());
+            assert!(parse_gog_catalog(&serde_json::json!({})).is_empty());
+        }
+
+        #[test]
+        fn art_lookup_blocked_honours_the_14_day_cooldown() {
+            let now = 1_800_000_000i64;
+            assert!(!art_lookup_blocked(None, now));
+            assert!(art_lookup_blocked(Some(now - 13 * 24 * 3600), now));
+            assert!(!art_lookup_blocked(Some(now - 14 * 24 * 3600), now));
+            assert!(!art_lookup_blocked(Some(now - 30 * 24 * 3600), now));
+            assert!(art_lookup_blocked(Some(now), now));
+        }
+
+        #[test]
+        fn validate_image_url_requires_https_and_no_whitespace() {
+            assert!(validate_image_url("https://example.com/cover.jpg").is_ok());
+            assert!(validate_image_url("http://example.com/cover.jpg").is_err());
+            assert!(validate_image_url("https://example.com/a b.jpg").is_err());
+            assert!(validate_image_url("https://example.com/a\nb.jpg").is_err());
+            assert!(validate_image_url("").is_err());
+            assert!(validate_image_url("  https://example.com/c.png  ").is_ok());
+        }
+
+        #[test]
+        fn is_gog_cover_url_allows_only_the_gog_image_host() {
+            assert!(is_gog_cover_url(
+                "https://images.gog-statics.com/abc123.jpg"
+            ));
+            assert!(!is_gog_cover_url(
+                "https://images.gog-statics.com.evil.com/abc.jpg"
+            ));
+            assert!(!is_gog_cover_url("https://cdn.example.com/cover.jpg"));
+            assert!(!is_gog_cover_url("http://images.gog-statics.com/abc.jpg"));
         }
     }
 }

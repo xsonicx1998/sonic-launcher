@@ -72,6 +72,10 @@ global.window.__TAURI__ = {
         case 'download_theme_music': return Promise.resolve('C:\\music\\theme.m4a');
         case 'download_theme_music_url': return Promise.resolve('C:\\music\\theme.m4a');
         case 'download_khinsider_theme': return Promise.resolve(mockKhinsider);
+        case 'pick_cover_art': return Promise.resolve('C:\\art\\cover.jpg');
+        case 'set_cover_art_appid': return Promise.resolve(null);
+        case 'set_cover_art_url': return Promise.resolve(null);
+        case 'retry_art': return Promise.resolve('Cover art found');
         case 'get_app_version': return Promise.resolve('0.2.1');
         default: return Promise.resolve(null);
       }
@@ -129,6 +133,9 @@ const NEEDED_FNS = [
   'toggleGameMenu', 'buildGameMenu', 'hideGameMenu',
   'openSearch', 'closeSearch', 'searchGameMatches', 'renderSearchResults',
   'pickSearchResult', 'toggleThemePlayback',
+  'baseTileFields', 'placeholderArt', 'mapUnifiedGame',
+  'saveAutoFetchArt', 'copySgdbLink',
+  'pickCoverArt', 'setCoverArtAppid', 'pasteCoverArtUrl', 'retryArt',
 ];
 const VAR_DEFS = [];
 
@@ -153,6 +160,7 @@ async function main() {
   // Globals the extracted functions need (declared here, in main's scope,
   // so eval'd function declarations resolve them).
   var themeAudio, themeDebounce, themeAutoTried, GAMES, sel, tileEls;
+  var toastTimer = null;
   var SFX_STEMS = ['boot', 'nav', 'select', 'launch', 'back', 'cc_open', 'ambient'];
   var SFX_EXTS = ['mp3', 'wav', 'ogg', 'm4a'];
   var sfxCtx, sfxGain, sfxBuffers = {}, sfxEnabled = true, sfxVolume = 0.8;
@@ -163,6 +171,10 @@ async function main() {
   // the harness only records which index was picked.
   var selectGameCalls = [];
   function selectGame(i){ selectGameCalls.push(i); }
+  // Stub: cover-art actions refresh the game list; the harness only
+  // records that a refresh was requested.
+  var refreshGamesCalls = 0;
+  function refreshGames(){ refreshGamesCalls++; }
   // Evaluate the extracted code in this context (globals above are in scope).
   eval(code);
 
@@ -348,6 +360,117 @@ async function main() {
   });
   await check('escHtml escapes single quotes too', async () => {
     assert.strictEqual(escHtml("a'b\"c<d&e"), 'a&#39;b&quot;c&lt;d&amp;e');
+  });
+
+  console.log('Cover art (v0.2.5):');
+  await check('Settings panel has the auto-fetch checkbox and the SGDB link', async () => {
+    assert(html.includes('id="autoFetchArt"'), 'missing autoFetchArt checkbox');
+    assert(html.includes('Auto-fetch cover art from Steam'), 'missing auto-fetch label');
+    assert(html.includes('steamgriddb.com/profile/preferences/api'), 'missing SGDB link text');
+    assert(html.includes('copySgdbLink()'), 'missing Copy link button');
+    assert(html.includes('saveAutoFetchArt(this)'), 'missing auto-fetch wiring');
+  });
+  await check('saveAutoFetchArt writes the auto_fetch_art setting', async () => {
+    delete mockSettings.auto_fetch_art;
+    saveAutoFetchArt({ checked: false });
+    assert.strictEqual(mockSettings.auto_fetch_art, '0', 'uncheck should write 0');
+    saveAutoFetchArt({ checked: true });
+    assert.strictEqual(mockSettings.auto_fetch_art, '1', 'check should write 1');
+  });
+  await check('copySgdbLink shows the key URL when clipboard is unavailable', async () => {
+    const toast = getEl('toast');
+    toast.textContent = '';
+    copySgdbLink();
+    assert.strictEqual(toast.textContent, 'https://www.steamgriddb.com/profile/preferences/api', 'toast should show the URL, got: ' + toast.textContent);
+  });
+  await check('mapUnifiedGame maps art_failed to artFailed', async () => {
+    const u = { key: 'scan-7', name: 'Hollow Knight', source: 'scan', appid: null, exe_path: 'C:\\Games\\Hollow Knight\\Hollow Knight.exe', launch_uri: null, folder: 'C:\\Games\\Hollow Knight', confidence: 'high', pick_source: 'name', has_override: false, art_failed: true };
+    const g = mapUnifiedGame(u);
+    assert.strictEqual(g.artFailed, true, 'artFailed should be true');
+    assert.strictEqual(g.scanId, 7, 'scanId should be 7');
+    const u2 = Object.assign({}, u, { art_failed: false });
+    assert.strictEqual(mapUnifiedGame(u2).artFailed, false, 'artFailed should be false');
+  });
+  await check('••• menu shows cover-art items for real games, Retry Art only when artFailed', async () => {
+    const m = getEl('gameMenu');
+    GAMES = [{ key: 'scan-7', row: 'Hollow Knight', source: 'scan', scanId: 7, exePath: 'C:\\Games\\Hollow Knight\\Hollow Knight.exe', confidence: 'high', hasOverride: false, artFailed: true }];
+    sel = 0;
+    buildGameMenu();
+    assert(m.innerHTML.includes('Set Cover Art'), 'missing Set Cover Art: ' + m.innerHTML);
+    assert(m.innerHTML.includes('Set Steam AppID'), 'missing Set Steam AppID');
+    assert(m.innerHTML.includes('Paste Image URL'), 'missing Paste Image URL');
+    assert(m.innerHTML.includes('Retry Art'), 'missing Retry Art when artFailed');
+    GAMES = [{ key: 'scan-8', row: 'Celeste', source: 'scan', scanId: 8, artFailed: false }];
+    buildGameMenu();
+    assert(m.innerHTML.includes('Set Cover Art'), 'missing Set Cover Art (no-fail game)');
+    assert(!m.innerHTML.includes('Retry Art'), 'Retry Art should not show when artFailed is false');
+    GAMES = [{ key: 'dreams', row: 'Dreams' }];
+    buildGameMenu();
+    assert(!m.innerHTML.includes('Set Cover Art'), 'demo games should not get cover-art items');
+  });
+  await check('pickCoverArt invokes pick_cover_art and refreshes', async () => {
+    GAMES = [{ key: 'scan-7', row: 'Hollow Knight', source: 'scan', scanId: 7 }];
+    sel = 0;
+    invokeLog.length = 0;
+    refreshGamesCalls = 0;
+    pickCoverArt();
+    await sleep(50);
+    const call = invokeLog.find((c) => c.cmd === 'pick_cover_art');
+    assert(call, 'missing pick_cover_art call: ' + invokeLog.map((c) => c.cmd).join(','));
+    assert.strictEqual(call.args.gameKey, 'scan-7', 'wrong gameKey');
+    assert.strictEqual(refreshGamesCalls, 1, 'expected a refresh after picking');
+  });
+  await check('setCoverArtAppid prompts and invokes with the number; rejects junk', async () => {
+    GAMES = [{ key: 'scan-7', row: 'Hollow Knight', source: 'scan', scanId: 7 }];
+    sel = 0;
+    global.prompt = () => '440';
+    invokeLog.length = 0;
+    refreshGamesCalls = 0;
+    setCoverArtAppid();
+    await sleep(50);
+    let call = invokeLog.find((c) => c.cmd === 'set_cover_art_appid');
+    assert(call, 'missing set_cover_art_appid call');
+    assert.strictEqual(call.args.appid, 440, 'appid should be the number 440');
+    assert.strictEqual(refreshGamesCalls, 1, 'expected a refresh after setting');
+    global.prompt = () => 'abc';
+    invokeLog.length = 0;
+    setCoverArtAppid();
+    await sleep(50);
+    assert(!invokeLog.some((c) => c.cmd === 'set_cover_art_appid'), 'junk input must not invoke');
+    global.prompt = () => '440x';
+    invokeLog.length = 0;
+    setCoverArtAppid();
+    await sleep(50);
+    assert(!invokeLog.some((c) => c.cmd === 'set_cover_art_appid'), 'trailing junk must not invoke');
+    delete global.prompt;
+  });
+  await check('pasteCoverArtUrl prompts and invokes set_cover_art_url', async () => {
+    GAMES = [{ key: 'scan-7', row: 'Hollow Knight', source: 'scan', scanId: 7 }];
+    sel = 0;
+    global.prompt = () => 'https://example.com/cover.jpg';
+    invokeLog.length = 0;
+    refreshGamesCalls = 0;
+    pasteCoverArtUrl();
+    await sleep(50);
+    const call = invokeLog.find((c) => c.cmd === 'set_cover_art_url');
+    assert(call, 'missing set_cover_art_url call');
+    assert.strictEqual(call.args.url, 'https://example.com/cover.jpg', 'wrong URL');
+    assert.strictEqual(refreshGamesCalls, 1, 'expected a refresh after setting');
+    delete global.prompt;
+  });
+  await check('retryArt invokes retry_art with the game key and name', async () => {
+    GAMES = [{ key: 'scan-7', row: 'Hollow Knight', source: 'scan', scanId: 7, artFailed: true }];
+    sel = 0;
+    invokeLog.length = 0;
+    refreshGamesCalls = 0;
+    retryArt();
+    await sleep(50);
+    const call = invokeLog.find((c) => c.cmd === 'retry_art');
+    assert(call, 'missing retry_art call');
+    assert.strictEqual(call.args.gameKey, 'scan-7', 'wrong gameKey');
+    assert.strictEqual(call.args.name, 'Hollow Knight', 'wrong name');
+    assert.strictEqual(refreshGamesCalls, 1, 'expected a refresh after retry');
+    assert.strictEqual(getEl('toast').textContent, 'Cover art found', 'toast should show the retry result');
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

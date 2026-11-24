@@ -41,7 +41,10 @@ fn open() -> Connection {
             folder   TEXT NOT NULL DEFAULT '',
             exe_override TEXT,
             confidence TEXT NOT NULL DEFAULT 'low',
-            pick_source TEXT NOT NULL DEFAULT 'largest'
+            pick_source TEXT NOT NULL DEFAULT 'largest',
+            resolved_appid INTEGER,
+            art_lookup_failed_at INTEGER,
+            art_source TEXT
         );",
     )
     .unwrap();
@@ -368,5 +371,128 @@ mod tests {
             )
             .unwrap();
         assert_eq!(folder_back, "C:\\Games\\Legacy");
+    }
+
+    #[test]
+    fn scanned_games_art_columns_round_trip_and_survive_rescan() {
+        // Mirrors the SQL in db.rs set_art_resolved / set_art_source /
+        // mark_art_lookup_failed / clear_art_lookup_failed.
+        let conn = open();
+        conn.execute(
+            "INSERT INTO scanned_games (name, exe_path, source, added_at, folder, confidence, pick_source)
+             VALUES (?1, ?2, 'scan', ?3, ?4, ?5, ?6)",
+            params![
+                "Cyberpunk 2077",
+                "C:\\Games\\Cyberpunk 2077\\bin\\x64\\Cyberpunk2077.exe",
+                1000,
+                "C:\\Games\\Cyberpunk 2077",
+                "high",
+                "known game"
+            ],
+        )
+        .unwrap();
+        let id: i64 = conn.last_insert_rowid();
+        // Fresh row: all art columns NULL.
+        let fresh: (Option<i64>, Option<i64>, Option<String>) = conn
+            .query_row(
+                "SELECT resolved_appid, art_lookup_failed_at, art_source FROM scanned_games WHERE id = ?1",
+                params![id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(fresh, (None, None, None));
+        // Steam store-search hit: cache the appid + source.
+        conn.execute(
+            "UPDATE scanned_games SET resolved_appid = ?1, art_source = ?2, art_lookup_failed_at = NULL WHERE id = ?3",
+            params![1091500i64, "steam", id],
+        )
+        .unwrap();
+        let hit: (Option<i64>, Option<String>) = conn
+            .query_row(
+                "SELECT resolved_appid, art_source FROM scanned_games WHERE id = ?1",
+                params![id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(hit, (Some(1091500), Some("steam".to_string())));
+        // A rescan (the UPDATE add_scanned_game runs) must not clobber
+        // the cached appid or the source marker.
+        conn.execute(
+            "UPDATE scanned_games SET name = ?1, exe_path = ?2, confidence = ?3, pick_source = ?4 WHERE id = ?5",
+            params![
+                "Cyberpunk 2077",
+                "C:\\Games\\Cyberpunk 2077\\bin\\x64\\Cyberpunk2077.exe",
+                "high",
+                "known game",
+                id
+            ],
+        )
+        .unwrap();
+        let kept: (Option<i64>, Option<String>) = conn
+            .query_row(
+                "SELECT resolved_appid, art_source FROM scanned_games WHERE id = ?1",
+                params![id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(kept, (Some(1091500), Some("steam".to_string())));
+        // GOG hit: source marker only, no Steam appid.
+        conn.execute(
+            "UPDATE scanned_games SET art_source = ?1 WHERE id = ?2",
+            params!["gog", id],
+        )
+        .unwrap();
+        // Double miss: record the failure time; a retry clears it.
+        conn.execute(
+            "UPDATE scanned_games SET art_lookup_failed_at = ?1 WHERE id = ?2",
+            params![1_800_000_000i64, id],
+        )
+        .unwrap();
+        let failed: Option<i64> = conn
+            .query_row(
+                "SELECT art_lookup_failed_at FROM scanned_games WHERE id = ?1",
+                params![id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(failed, Some(1_800_000_000));
+        conn.execute(
+            "UPDATE scanned_games SET art_lookup_failed_at = NULL WHERE id = ?1",
+            params![id],
+        )
+        .unwrap();
+        let cleared: Option<i64> = conn
+            .query_row(
+                "SELECT art_lookup_failed_at FROM scanned_games WHERE id = ?1",
+                params![id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(cleared, None);
+        // Manual cover: the marker survives a rescan too.
+        conn.execute(
+            "UPDATE scanned_games SET art_source = ?1 WHERE id = ?2",
+            params!["manual", id],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE scanned_games SET name = ?1, exe_path = ?2, confidence = ?3, pick_source = ?4 WHERE id = ?5",
+            params![
+                "Cyberpunk 2077",
+                "C:\\Games\\Cyberpunk 2077\\bin\\x64\\Cyberpunk2077.exe",
+                "high",
+                "known game",
+                id
+            ],
+        )
+        .unwrap();
+        let manual: Option<String> = conn
+            .query_row(
+                "SELECT art_source FROM scanned_games WHERE id = ?1",
+                params![id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(manual, Some("manual".to_string()));
     }
 }

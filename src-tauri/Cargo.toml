@@ -1,6 +1,6 @@
 [package]
 name = "sonic-launcher"
-version = "0.2.4"
+version = "0.2.5"
 description = "Sonic Launcher - a PS5-style game launcher (Tauri 2 + Rust)"
 authors = ["Mohand Kandil"]
 edition = "2021"

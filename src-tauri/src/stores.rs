@@ -56,6 +56,9 @@ pub struct UnifiedGame {
     pub pick_source: Option<String>,
     /// Scanned games only: the user overrode the picked exe.
     pub has_override: bool,
+    /// Scanned games only: a keyless art lookup failed for this game
+    /// (Steam and GOG both missed) — the ••• menu offers Retry Art.
+    pub art_failed: bool,
 }
 
 /// One exe found by the generic folder scan.
@@ -1374,6 +1377,7 @@ pub fn list_all_games(app: &AppHandle) -> Vec<UnifiedGame> {
                 confidence: None,
                 pick_source: None,
                 has_override: false,
+                art_failed: false,
             });
         }
     }
@@ -1393,6 +1397,7 @@ pub fn list_all_games(app: &AppHandle) -> Vec<UnifiedGame> {
                     confidence: None,
                     pick_source: None,
                     has_override: false,
+                    art_failed: false,
                 });
             }
         }
@@ -1414,6 +1419,7 @@ pub fn list_all_games(app: &AppHandle) -> Vec<UnifiedGame> {
             confidence: None,
             pick_source: None,
             has_override: false,
+            art_failed: false,
         });
     }
 
@@ -1433,6 +1439,7 @@ pub fn list_all_games(app: &AppHandle) -> Vec<UnifiedGame> {
                     confidence: Some(s.confidence),
                     pick_source: Some(s.pick_source),
                     has_override: s.exe_override.is_some(),
+                    art_failed: s.art_lookup_failed_at.is_some(),
                 });
             }
         }

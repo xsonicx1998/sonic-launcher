@@ -78,7 +78,8 @@ fn open(app: &AppHandle) -> Result<Connection, String> {
     // the table predates the folder/override/confidence columns, and
     // CREATE TABLE IF NOT EXISTS never adds them. `ensure_column` adds
     // each one only when it is missing, so old databases upgrade in
-    // place with their games intact.
+    // place with their games intact. The art-lookup columns (v0.2.5)
+    // follow the same pattern.
     ensure_column(&conn, "scanned_games", "folder", "TEXT NOT NULL DEFAULT ''")?;
     ensure_column(&conn, "scanned_games", "exe_override", "TEXT")?;
     ensure_column(
@@ -93,6 +94,9 @@ fn open(app: &AppHandle) -> Result<Connection, String> {
         "pick_source",
         "TEXT NOT NULL DEFAULT 'largest'",
     )?;
+    ensure_column(&conn, "scanned_games", "resolved_appid", "INTEGER")?;
+    ensure_column(&conn, "scanned_games", "art_lookup_failed_at", "INTEGER")?;
+    ensure_column(&conn, "scanned_games", "art_source", "TEXT")?;
     Ok(conn)
 }
 
@@ -388,6 +392,19 @@ pub struct ScannedGame {
     pub confidence: String,
     /// Which signal picked the exe (shortcut, known game, registry, ...).
     pub pick_source: String,
+    /// Steam appid found by the keyless store search (v0.2.5): the
+    /// game has no Steam appid of its own, so this is the cached
+    /// lookup result. `None` = never resolved (or resolved via GOG).
+    pub resolved_appid: Option<i64>,
+    /// Unix time of the last failed keyless art lookup (Steam and
+    /// GOG both missed). No auto-retry for 14 days unless the user
+    /// clicks Retry Art.
+    pub art_lookup_failed_at: Option<i64>,
+    /// Where the game's art came from: "steam" (store search hit),
+    /// "gog" (GOG Catalog hit), "manual" (user-picked cover, AppID,
+    /// or image URL). `None` = not resolved yet. A manual cover is
+    /// never overwritten by an automatic lookup.
+    pub art_source: Option<String>,
 }
 
 impl ScannedGame {
@@ -483,7 +500,7 @@ pub fn add_scanned_game(
 pub fn list_scanned_games(app: &AppHandle) -> Result<Vec<ScannedGame>, String> {
     let conn = open(app)?;
     let mut stmt = conn
-        .prepare("SELECT id, name, exe_path, source, added_at, folder, exe_override, confidence, pick_source FROM scanned_games ORDER BY id DESC")
+        .prepare("SELECT id, name, exe_path, source, added_at, folder, exe_override, confidence, pick_source, resolved_appid, art_lookup_failed_at, art_source FROM scanned_games ORDER BY id DESC")
         .map_err(|e| format!("cannot list scanned games: {e}"))?;
     let rows = stmt
         .query_map([], |row| {
@@ -497,6 +514,9 @@ pub fn list_scanned_games(app: &AppHandle) -> Result<Vec<ScannedGame>, String> {
                 exe_override: row.get(6)?,
                 confidence: row.get(7)?,
                 pick_source: row.get(8)?,
+                resolved_appid: row.get(9)?,
+                art_lookup_failed_at: row.get(10)?,
+                art_source: row.get(11)?,
             })
         })
         .map_err(|e| format!("cannot list scanned games: {e}"))?;
@@ -512,7 +532,7 @@ pub fn get_scanned_game(app: &AppHandle, id: i64) -> Result<Option<ScannedGame>,
     let conn = open(app)?;
     let row = conn
         .query_row(
-            "SELECT id, name, exe_path, source, added_at, folder, exe_override, confidence, pick_source FROM scanned_games WHERE id = ?1",
+            "SELECT id, name, exe_path, source, added_at, folder, exe_override, confidence, pick_source, resolved_appid, art_lookup_failed_at, art_source FROM scanned_games WHERE id = ?1",
             params![id],
             |row| {
                 Ok(ScannedGame {
@@ -525,6 +545,9 @@ pub fn get_scanned_game(app: &AppHandle, id: i64) -> Result<Option<ScannedGame>,
                     exe_override: row.get(6)?,
                     confidence: row.get(7)?,
                     pick_source: row.get(8)?,
+                    resolved_appid: row.get(9)?,
+                    art_lookup_failed_at: row.get(10)?,
+                    art_source: row.get(11)?,
                 })
             },
         )
@@ -574,6 +597,86 @@ pub fn clear_scanned_exe_override(app: &AppHandle, id: i64) -> Result<(), String
             params![id],
         )
         .map_err(|e| format!("cannot clear exe override: {e}"))?;
+    if changed == 0 {
+        return Err(format!("no scanned game with id {id}"));
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Keyless art lookup state (v0.2.5) — cached on `scanned_games`.
+// Rescans never touch these columns: `add_scanned_game` updates only
+// name / exe_path / confidence / pick_source, so a resolved appid,
+// a manual marker, and a failure timestamp all survive every rescan.
+// ---------------------------------------------------------------------------
+
+/// The scan id for a `scan-<id>` game key, or `None` for other keys
+/// (steam-*, manual-*, epic-*, ...).
+pub fn scanned_id_from_key(game_key: &str) -> Option<i64> {
+    game_key.strip_prefix("scan-")?.parse().ok()
+}
+
+/// Record a successful keyless Steam lookup: cache the appid and the
+/// source ("steam", or "manual" when the user typed the AppID
+/// themselves), and clear any previous failure timestamp.
+pub fn set_art_resolved(app: &AppHandle, id: i64, appid: u32, source: &str) -> Result<(), String> {
+    let conn = open(app)?;
+    let changed = conn
+        .execute(
+            "UPDATE scanned_games SET resolved_appid = ?1, art_source = ?2, art_lookup_failed_at = NULL WHERE id = ?3",
+            params![appid as i64, source, id],
+        )
+        .map_err(|e| format!("cannot save resolved appid: {e}"))?;
+    if changed == 0 {
+        return Err(format!("no scanned game with id {id}"));
+    }
+    Ok(())
+}
+
+/// Record where a game's art came from without a Steam appid: "gog"
+/// for a GOG Catalog hit, "manual" for a user-picked cover or image
+/// URL. A manual marker is never overwritten by an automatic lookup
+/// (see art.rs).
+pub fn set_art_source(app: &AppHandle, id: i64, source: &str) -> Result<(), String> {
+    let conn = open(app)?;
+    let changed = conn
+        .execute(
+            "UPDATE scanned_games SET art_source = ?1 WHERE id = ?2",
+            params![source, id],
+        )
+        .map_err(|e| format!("cannot save art source: {e}"))?;
+    if changed == 0 {
+        return Err(format!("no scanned game with id {id}"));
+    }
+    Ok(())
+}
+
+/// Record a failed keyless art lookup (Steam and GOG both missed).
+/// Automatic retries stay blocked for 14 days (see art.rs); the
+/// user can always force a retry from the ••• menu.
+pub fn mark_art_lookup_failed(app: &AppHandle, id: i64) -> Result<(), String> {
+    let conn = open(app)?;
+    let changed = conn
+        .execute(
+            "UPDATE scanned_games SET art_lookup_failed_at = ?1 WHERE id = ?2",
+            params![now_unix(), id],
+        )
+        .map_err(|e| format!("cannot mark art lookup failed: {e}"))?;
+    if changed == 0 {
+        return Err(format!("no scanned game with id {id}"));
+    }
+    Ok(())
+}
+
+/// Clear the failure timestamp (Retry Art, or a later success).
+pub fn clear_art_lookup_failed(app: &AppHandle, id: i64) -> Result<(), String> {
+    let conn = open(app)?;
+    let changed = conn
+        .execute(
+            "UPDATE scanned_games SET art_lookup_failed_at = NULL WHERE id = ?1",
+            params![id],
+        )
+        .map_err(|e| format!("cannot clear art lookup failure: {e}"))?;
     if changed == 0 {
         return Err(format!("no scanned game with id {id}"));
     }

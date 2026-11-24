@@ -89,7 +89,9 @@
       <div style="margin-bottom:12px">SteamGridDB API key <span id="sgdbStatus" style="color:rgba(255,255,255,.55);font-size:12px"></span><br>
         <input id="sgdbKey" type="password" placeholder="Paste your SteamGridDB key" autocomplete="off" style="width:340px;max-width:60vw;margin-top:6px;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.45);color:#fff;font-size:13px">
         <button onclick="saveSgdbKey()" style="margin-left:8px;padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.3);background:rgba(139,32,255,.5);color:#fff;cursor:pointer;font-size:13px">Save</button>
+        <div style="font-size:12px;color:rgba(255,255,255,.55);margin-top:6px">Get a free key: steamgriddb.com/profile/preferences/api <button onclick="copySgdbLink()" style="margin-left:6px;padding:3px 9px;border-radius:6px;border:1px solid rgba(255,255,255,.3);background:transparent;color:rgba(255,255,255,.85);cursor:pointer;font-size:12px">Copy link</button></div>
       </div>
+      <div style="margin-bottom:12px"><label><input id="autoFetchArt" type="checkbox" checked onchange="saveAutoFetchArt(this)" style="vertical-align:-2px"> Auto-fetch cover art from Steam</label> <span style="color:rgba(255,255,255,.55);font-size:12px">(no key needed &mdash; looks up covers for scanned games, GOG as a fallback)</span></div>
       <div style="margin-bottom:12px"><label><input id="musicEnabled" type="checkbox" checked onchange="saveMusicToggle(this)" style="vertical-align:-2px"> Theme music</label>
         <label style="margin-left:16px">Volume <input id="musicVolume" type="range" min="0" max="100" value="30" onchange="saveMusicVolume(this)" oninput="saveMusicVolume(this)" style="vertical-align:-3px;width:120px"></label>
       </div>
@@ -412,6 +414,7 @@ function mapUnifiedGame(u){
   g.key = u.key; g.source = u.source; g.appid = u.appid || null; g.exePath = u.exe_path || null;
   g.folder = u.folder || null; g.confidence = u.confidence || null;
   g.pickSource = u.pick_source || null; g.hasOverride = !!u.has_override;
+  g.artFailed = !!u.art_failed;
   if(u.source === 'manual' && u.key){
     var parts = String(u.key).split('-');
     g.manualId = parseInt(parts[parts.length - 1], 10) || null;
@@ -900,6 +903,14 @@ function buildGameMenu(){
     html += '<div onclick="changeThemeMusic()" style="padding:9px 10px;border-radius:8px;cursor:pointer;background:rgba(255,255,255,.07)">Change Theme Music&hellip;</div>';
     html += '<div onclick="pickThemeFile()" style="padding:9px 10px;border-radius:8px;cursor:pointer;margin-top:6px;background:rgba(255,255,255,.07)">Choose music file&hellip;</div>';
     html += '<div onclick="pasteThemeUrl()" style="padding:9px 10px;border-radius:8px;cursor:pointer;margin-top:6px;background:rgba(255,255,255,.07)">Paste music URL&hellip;</div>';
+    if(g.source && g.source !== 'demo'){
+      html += '<div onclick="pickCoverArt()" style="padding:9px 10px;border-radius:8px;cursor:pointer;margin-top:6px;background:rgba(255,255,255,.07)">Set Cover Art&hellip;</div>';
+      html += '<div onclick="setCoverArtAppid()" style="padding:9px 10px;border-radius:8px;cursor:pointer;margin-top:6px;background:rgba(255,255,255,.07)">Set Steam AppID&hellip;</div>';
+      html += '<div onclick="pasteCoverArtUrl()" style="padding:9px 10px;border-radius:8px;cursor:pointer;margin-top:6px;background:rgba(255,255,255,.07)">Paste Image URL&hellip;</div>';
+      if(g.artFailed){
+        html += '<div onclick="retryArt()" style="padding:9px 10px;border-radius:8px;cursor:pointer;margin-top:6px;background:rgba(255,255,255,.07)">Retry Art</div>';
+      }
+    }
     html += '<div onclick="hideGameMenu();openSettings()" style="padding:9px 10px;border-radius:8px;cursor:pointer;margin-top:6px;background:rgba(255,255,255,.07)">Settings</div>';
     if(g.source === 'manual'){
       html += '<div onclick="removeSelectedManual()" style="padding:9px 10px;border-radius:8px;cursor:pointer;margin-top:6px;background:rgba(240,45,205,.18)">Remove from launcher</div>';
@@ -1060,6 +1071,51 @@ function pasteThemeUrl(){
   }).catch(function(err){ showToast('Could not download: ' + err); });
 }
 
+/* v0.2.5: cover art — manual pick / Steam AppID / pasted image URL / retry. */
+function pickCoverArt(){
+  var g = GAMES[sel]; if(!g){ return; }
+  var core = tauriCore(); if(!core){ return; }
+  core.invoke('pick_cover_art', { gameKey: g.key }).then(function(path){
+    if(path){ showToast('Cover art set'); hideGameMenu(); refreshGames(); }
+  }).catch(function(err){ showToast('Could not pick cover: ' + err); });
+}
+function setCoverArtAppid(){
+  var g = GAMES[sel]; if(!g){ return; }
+  var raw = window.prompt('Enter the Steam AppID number for this game (find it in the store URL: store.steampowered.com/app/<number>/)');
+  if(!raw){ return; }
+  var trimmed = String(raw).trim();
+  var appid = parseInt(trimmed, 10);
+  if(!appid || appid <= 0 || String(appid) !== trimmed){
+    showToast('That is not a valid AppID number');
+    return;
+  }
+  var core = tauriCore(); if(!core){ return; }
+  showToast('Fetching cover art...');
+  core.invoke('set_cover_art_appid', { gameKey: g.key, appid: appid }).then(function(){
+    showToast('Cover art set'); hideGameMenu(); refreshGames();
+  }).catch(function(err){ showToast('Could not set cover: ' + err); });
+}
+function pasteCoverArtUrl(){
+  var g = GAMES[sel]; if(!g){ return; }
+  var url = window.prompt('Paste an image URL (https://...)');
+  if(!url){ return; }
+  url = String(url).trim();
+  if(!url){ return; }
+  var core = tauriCore(); if(!core){ return; }
+  showToast('Downloading cover art...');
+  core.invoke('set_cover_art_url', { gameKey: g.key, url: url }).then(function(){
+    showToast('Cover art set'); hideGameMenu(); refreshGames();
+  }).catch(function(err){ showToast('Could not download: ' + err); });
+}
+function retryArt(){
+  var g = GAMES[sel]; if(!g){ return; }
+  var core = tauriCore(); if(!core){ return; }
+  showToast('Looking up cover art...');
+  core.invoke('retry_art', { gameKey: g.key, name: g.row }).then(function(msg){
+    showToast(msg || 'Cover lookup done'); hideGameMenu(); refreshGames();
+  }).catch(function(err){ showToast('Could not retry: ' + err); });
+}
+
 /* Phase 5: settings panel wiring. */
 function populateLauncherSettings(){
   var core = tauriCore();
@@ -1074,6 +1130,7 @@ function populateLauncherSettings(){
   getSetting('skip_boot', '0').then(function(v){ var el = document.getElementById('skipBoot'); if(el){ el.checked = (v === '1'); } });
   getSetting('sfx_enabled', '1').then(function(v){ var el = document.getElementById('sfxEnabled'); if(el){ el.checked = (v !== '0'); } });
   getSetting('sfx_volume', '80').then(function(v){ var el = document.getElementById('sfxVolume'); if(el){ el.value = parseInt(v, 10) || 80; } });
+  getSetting('auto_fetch_art', '1').then(function(v){ var el = document.getElementById('autoFetchArt'); if(el){ el.checked = (v !== '0'); } });
   core.invoke('get_app_version').then(function(v){
     var el = document.getElementById('appVersion');
     if(el){ el.textContent = 'Sonic Launcher v' + v; }
@@ -1093,6 +1150,18 @@ function saveSgdbKey(){
     populateLauncherSettings();
     showToast(key ? 'SteamGridDB key saved' : 'SteamGridDB key cleared');
   }).catch(function(err){ showToast('Could not save key: ' + err); });
+}
+function saveAutoFetchArt(el){
+  var core = tauriCore();
+  if(core){ core.invoke('set_setting', { key: 'auto_fetch_art', value: el.checked ? '1' : '0' }).catch(function(){}); }
+}
+function copySgdbLink(){
+  var url = 'https://www.steamgriddb.com/profile/preferences/api';
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(function(){ showToast('Link copied'); }).catch(function(){ showToast(url); });
+  } else {
+    showToast(url);
+  }
 }
 function pickAmbientFile(){
   var core = tauriCore(); if(!core){ return; }

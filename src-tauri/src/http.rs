@@ -52,6 +52,46 @@ pub fn download_json(url: &str, auth: Option<&str>) -> Result<serde_json::Value,
     serde_json::from_slice(&bytes).map_err(|e| format!("parsing JSON from {url} failed: {e}"))
 }
 
+/// Outcome of a short, body-capped GET (small JSON lookups such as the
+/// Steam store search). The body cap is enforced while reading, so an
+/// oversized response can never fill memory.
+pub enum CappedGet {
+    /// HTTP 200 body, at most `max_bytes` long.
+    Ok(Vec<u8>),
+    /// HTTP 429 or 403 — the caller should abort the session's
+    /// remaining lookups instead of hammering the endpoint.
+    RateLimited,
+    /// Any other failure (network, timeout, other status, oversize).
+    Failed(String),
+}
+
+/// Short GET with a `timeout_secs` timeout and a `max_bytes` body cap.
+/// Unlike `download_bytes_with_header` this does not read an unbounded
+/// body and it distinguishes rate-limiting (429/403) from other
+/// failures.
+pub fn get_capped(url: &str, timeout_secs: u64, max_bytes: usize) -> CappedGet {
+    let resp = match ureq::get(url)
+        .set("User-Agent", USER_AGENT)
+        .timeout(Duration::from_secs(timeout_secs))
+        .call()
+    {
+        Ok(r) => r,
+        Err(ureq::Error::Status(429, _)) | Err(ureq::Error::Status(403, _)) => {
+            return CappedGet::RateLimited;
+        }
+        Err(e) => return CappedGet::Failed(format!("GET {url} failed: {e}")),
+    };
+    let mut limited = resp.into_reader().take(max_bytes as u64 + 1);
+    let mut bytes = Vec::new();
+    if let Err(e) = limited.read_to_end(&mut bytes) {
+        return CappedGet::Failed(format!("reading {url} failed: {e}"));
+    }
+    if bytes.len() > max_bytes {
+        return CappedGet::Failed(format!("response from {url} exceeds {max_bytes} bytes"));
+    }
+    CappedGet::Ok(bytes)
+}
+
 /// GET a URL and write the body to `dest` (creating parent dirs).
 /// Returns `Ok(true)` when a download happened, `Ok(false)` when the
 /// destination file already exists and is non-empty (cache hit).

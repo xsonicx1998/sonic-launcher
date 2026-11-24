@@ -5,6 +5,12 @@
 //!   `list_manual_games` / `remove_manual_game`, `get_running_appid`
 //! - Phase 2: `get_game_art`, `set_steamgriddb_key`,
 //!   `is_steamgriddb_key_set` (art.rs)
+//! - v0.2.5: keyless cover lookup (Steam store search, then GOG
+//!   Catalog) with a background worker after a scan; manual cover
+//!   commands `pick_cover_art`, `set_cover_art_appid`,
+//!   `set_cover_art_url`, `retry_art` (art.rs). The "Auto-fetch
+//!   cover art" toggle uses the generic `get_setting` / `set_setting`
+//!   with key `auto_fetch_art` (ON by default).
 //! - Phase 3: `ensure_ytdlp`, `search_theme_music`,
 //!   `download_theme_music`, `get_game_music`, `pick_music_file`,
 //!   `get_music_data_uri` (music.rs)
@@ -92,6 +98,26 @@ fn set_steamgriddb_key(app: AppHandle, key: String) -> Result<(), String> {
 #[tauri::command]
 fn is_steamgriddb_key_set(app: AppHandle) -> bool {
     art::is_steamgriddb_key_set(&app)
+}
+
+#[tauri::command]
+fn pick_cover_art(app: AppHandle, game_key: String) -> Result<Option<String>, String> {
+    art::pick_cover_image(&app, &game_key)
+}
+
+#[tauri::command]
+fn set_cover_art_appid(app: AppHandle, game_key: String, appid: u32) -> Result<(), String> {
+    art::set_cover_art_appid(&app, &game_key, appid)
+}
+
+#[tauri::command]
+fn set_cover_art_url(app: AppHandle, game_key: String, url: String) -> Result<(), String> {
+    art::set_cover_art_url(&app, &game_key, &url)
+}
+
+#[tauri::command]
+fn retry_art(app: AppHandle, game_key: String, name: String) -> Result<String, String> {
+    art::retry_art(&app, &game_key, &name)
 }
 
 // --- Phase 3: theme music --------------------------------------------------
@@ -225,6 +251,10 @@ fn scan_folders(app: AppHandle, folders: Vec<String>) -> Vec<stores::ScannedFoun
             &f.pick_source,
         );
     }
+    // Keyless cover lookup runs in the background after the scan:
+    // sequential, throttled, and it never blocks the scan result.
+    let worker_app = app.clone();
+    let _ = std::thread::spawn(move || art::run_art_lookup_worker(&worker_app));
     found
 }
 
@@ -380,6 +410,10 @@ fn main() {
             get_game_art,
             set_steamgriddb_key,
             is_steamgriddb_key_set,
+            pick_cover_art,
+            set_cover_art_appid,
+            set_cover_art_url,
+            retry_art,
             ensure_ytdlp,
             search_theme_music,
             download_theme_music,

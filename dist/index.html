@@ -37,6 +37,13 @@
   <div id="bgStack" style="position:absolute;inset:0;overflow:hidden;background:#000;z-index:0"></div>
   <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.72) 0%,rgba(0,0,0,.48) 22%,rgba(0,0,0,.18) 36%,rgba(0,0,0,0) 48%),linear-gradient(0deg,rgba(0,0,0,.82) 0%,rgba(0,0,0,.45) 32%,rgba(0,0,0,0) 62%),radial-gradient(ellipse 75% 65% at 15% 95%,rgba(0,0,0,.65) 0%,rgba(0,0,0,0) 72%)"></div>
   <div id="toast" style="position:absolute;top:16px;right:clamp(28px,3.6vw,64px);font-size:14px;font-weight:400;color:rgba(255,255,255,.96);text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65);z-index:5;opacity:0">Logged in to Sonic Launcher.</div>
+  <div id="fastExitNotice" style="display:none;position:absolute;top:64px;right:clamp(28px,3.6vw,64px);width:380px;max-width:80vw;background:rgba(20,22,32,.97);border:1px solid rgba(139,32,255,.55);border-radius:12px;padding:14px 16px;box-shadow:0 12px 40px rgba(0,0,0,.6),0 0 0 1px rgba(0,200,255,.15);z-index:9;font-size:14px;color:rgba(255,255,255,.92)">
+    <div id="fastExitText" style="line-height:1.45"></div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <div onclick="fastExitChangeExe()" style="flex:1;text-align:center;padding:9px 10px;border-radius:8px;cursor:pointer;background:linear-gradient(135deg,#8B20FF,#00C8FF);font-weight:500">Change launch file</div>
+      <div onclick="hideFastExitNotice()" style="padding:9px 14px;border-radius:8px;cursor:pointer;background:rgba(255,255,255,.07)">Dismiss</div>
+    </div>
+  </div>
   <div id="topBar" style="position:relative;z-index:2;padding:clamp(22px,2.4vw,38px) clamp(28px,3.6vw,64px) 0;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)">
     <div style="display:flex;align-items:center">
       <span style="font-size:clamp(18px,1.35vw,24px);font-weight:500;color:rgba(255,255,255,.98)">Games</span><span style="font-size:clamp(18px,1.35vw,24px);font-weight:300;color:rgba(255,255,255,.52);margin-left:32px">Media</span>
@@ -498,6 +505,8 @@ function launchSelected(){
   var g = GAMES[sel];
   if(!g){ return; }
   if(!g.source || g.source === 'demo'){ showToast('Demo game \u2014 add your own games with + to play'); return; }
+  /* A fast-exit notice from a previous launch is stale now. */
+  hideFastExitNotice();
   var core = tauriCore();
   if(!core){ showToast('Launcher backend not available'); return; }
   var args = (g.source === 'steam') ? { appid: g.appid, gameName: g.row, gameKey: g.key } : { exePath: g.exePath, gameName: g.row, gameKey: g.key };
@@ -1060,22 +1069,46 @@ function resetExeOverride(){
 }
 /* Fail-soft: if an exe exits within ~3s with an error, the backend
    emits `launch-fast-exit` — suggest trying another launch file.
-   Suggest-only: nothing is blocked or reverted. */
+   Suggest-only: nothing is blocked or reverted. The notice is a DOM
+   element, never a native confirm dialog: the event can arrive while the
+   launcher window is hidden, and a native dialog fired from a hidden
+   window never surfaces (and a blocking confirm can stall the JS
+   thread, including the poll that restores the window). A DOM notice
+   is still there when the window is shown again — neither restore
+   path (stopRunningPoll / startExePoll) touches it. */
+var fastExitGameKey = null;
+function showFastExitNotice(name, gameKey){
+  var n = document.getElementById('fastExitNotice');
+  if(!n){ return; }
+  var t = document.getElementById('fastExitText');
+  if(t){ t.textContent = name + ' closed right away. This might not be the right file.'; }
+  fastExitGameKey = gameKey || null;
+  n.style.display = 'block';
+}
+function hideFastExitNotice(){
+  var n = document.getElementById('fastExitNotice');
+  if(n){ n.style.display = 'none'; }
+  fastExitGameKey = null;
+}
+function fastExitChangeExe(){
+  var key = fastExitGameKey;
+  var idx = -1;
+  for(var i = 0; i < GAMES.length; i++){ if(GAMES[i].key === key){ idx = i; break; } }
+  if(idx < 0){ hideFastExitNotice(); return; }
+  sel = idx;
+  if(typeof selectGame === 'function'){ selectGame(idx); }
+  var m = document.getElementById('gameMenu');
+  if(m){ buildGameMenu(); m.style.display = 'block'; }
+  hideFastExitNotice();
+  setTimeout(openChangeExe, 150);
+}
 function listenFastExit(){
   var ev = (window.__TAURI__ && window.__TAURI__.event) ? window.__TAURI__.event : null;
   if(!ev || !ev.listen){ return; }
   ev.listen('launch-fast-exit', function(e){
     var p = (e && e.payload) || {};
     var name = p.game_name || 'The game';
-    if(!window.confirm(name + ' closed right away. This might not be the right file. Try another launch file?')){ return; }
-    var idx = -1;
-    for(var i = 0; i < GAMES.length; i++){ if(GAMES[i].key === p.game_key){ idx = i; break; } }
-    if(idx < 0){ return; }
-    sel = idx;
-    if(typeof selectGame === 'function'){ selectGame(idx); }
-    var m = document.getElementById('gameMenu');
-    if(m){ buildGameMenu(); m.style.display = 'block'; }
-    setTimeout(openChangeExe, 150);
+    showFastExitNotice(name, p.game_key);
   }).catch(function(){});
 }
 function pasteThemeUrl(){

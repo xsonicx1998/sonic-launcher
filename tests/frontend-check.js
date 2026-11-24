@@ -51,6 +51,8 @@ global.navigator = { getGamepads: () => [] };
 
 // --- Tauri mock -------------------------------------------------------------
 const invokeLog = [];
+let fastExitHandler = null; // set by the launch-fast-exit listener (v0.2.7)
+let mockProcessRunning = false; // is_process_running result (v0.2.7)
 let mockSettings = { music_enabled: '1', music_volume: '30', sfx_enabled: '1', sfx_volume: '80', skip_boot: '0', ambient_music_path: '' };
 let mockSearchResults = {}; // key: source|fallback -> array of candidates
 let mockKhinsider = null;   // null = not found, string = cached path
@@ -79,11 +81,19 @@ global.window.__TAURI__ = {
         case 'set_cover_art_url': return Promise.resolve(null);
         case 'retry_art': return Promise.resolve('Cover art found');
         case 'get_game_art': return Promise.resolve(mockArt);
+        case 'list_exe_candidates': return Promise.resolve([{ exe_path: 'C:\\Games\\Fail\\fail.exe', source: 'name' }]);
+        case 'is_process_running': return Promise.resolve(mockProcessRunning);
         case 'get_app_version': return Promise.resolve('0.2.1');
         default: return Promise.resolve(null);
       }
     },
     convertFileSrc: (p) => 'asset://localhost/' + p.replace(/\\/g, '/'),
+  },
+  event: {
+    listen: (name, fn) => {
+      if (name === 'launch-fast-exit') fastExitHandler = fn;
+      return Promise.resolve(() => {});
+    },
   },
 };
 // fetch mock: bundled sfx files exist as mp3; app-data files do not (unless flagged)
@@ -139,6 +149,8 @@ const NEEDED_FNS = [
   'baseTileFields', 'placeholderArt', 'mapUnifiedGame',
   'saveAutoFetchArt', 'copySgdbLink',
   'pickCoverArt', 'setCoverArtAppid', 'pasteCoverArtUrl', 'retryArt',
+  'listenFastExit', 'showFastExitNotice', 'hideFastExitNotice', 'fastExitChangeExe',
+  'openChangeExe', 'startExePoll', 'stopRunningPoll',
 ];
 const VAR_DEFS = [];
 
@@ -165,6 +177,7 @@ async function main() {
   var themeAudio, themeDebounce, themeAutoTried, GAMES, sel, tileEls;
   var toastTimer = null;
   var bgSlides = [];
+  var exePoll = null, runningPoll = null, currentSessionId = null;
   // Stub: applyRealArt calls render() when a hero arrives; the harness
   // only records that a render was requested.
   var renderCalls = 0;
@@ -553,6 +566,97 @@ async function main() {
     assert.strictEqual(GAMES[0].bg, 'asset://localhost/C:/art/scan-7-hero.jpg', 'hero should be set from hero_path, got: ' + GAMES[0].bg);
     assert.strictEqual(renderCalls, 1, 'render should run when the hero arrives');
     assert(tileEls[1].innerHTML.includes('object-fit:cover'), 'tile should stay full-bleed: ' + tileEls[1].innerHTML);
+  });
+
+  console.log('Fail-soft dialog (v0.2.7):');
+  await check('no window.confirm remains anywhere in the page', async () => {
+    assert(!html.includes('window.confirm'), 'window.confirm still present');
+    assert(html.includes('id="fastExitNotice"'), 'missing fastExitNotice element');
+    assert(html.includes('fastExitChangeExe()'), 'missing Change launch file button');
+    assert(html.includes('hideFastExitNotice()'), 'missing Dismiss button');
+  });
+  await check('launch-fast-exit shows the DOM notice with the game name', async () => {
+    GAMES = [{ key: 'scan-9', row: 'Fail', source: 'scan', scanId: 9, exePath: 'C:\\Games\\Fail\\fail.exe' }];
+    sel = 0;
+    const n = getEl('fastExitNotice');
+    n.style.display = 'none';
+    listenFastExit();
+    assert(fastExitHandler, 'listener was not registered');
+    fastExitHandler({ payload: { game_name: 'Fail', game_key: 'scan-9' } });
+    assert.strictEqual(n.style.display, 'block', 'notice did not show');
+    assert(getEl('fastExitText').textContent.includes('Fail'), 'notice should name the game: ' + getEl('fastExitText').textContent);
+  });
+  await check('missing payload name falls back to "The game"', async () => {
+    const n = getEl('fastExitNotice');
+    n.style.display = 'none';
+    fastExitHandler({ payload: {} });
+    assert.strictEqual(n.style.display, 'block', 'notice did not show for empty payload');
+    assert(getEl('fastExitText').textContent.includes('The game'), 'fallback name missing: ' + getEl('fastExitText').textContent);
+    hideFastExitNotice();
+  });
+  await check('Change launch file opens the picker for the right game', async () => {
+    GAMES = [
+      { key: 'scan-7', row: 'Hollow Knight', source: 'scan', scanId: 7, exePath: 'C:\\Games\\Hollow Knight\\Hollow Knight.exe' },
+      { key: 'scan-9', row: 'Fail', source: 'scan', scanId: 9, exePath: 'C:\\Games\\Fail\\fail.exe' },
+    ];
+    sel = 0;
+    selectGameCalls.length = 0;
+    getEl('gameMenu').style.display = 'none';
+    fastExitHandler({ payload: { game_name: 'Fail', game_key: 'scan-9' } });
+    assert.strictEqual(getEl('fastExitNotice').style.display, 'block', 'notice should be showing');
+    fastExitChangeExe();
+    assert.strictEqual(sel, 1, 'sel should move to the failed game');
+    assert.deepStrictEqual(selectGameCalls, [1], 'selectGame should be called for the failed game');
+    assert.strictEqual(getEl('gameMenu').style.display, 'block', 'game menu should open');
+    assert.strictEqual(getEl('fastExitNotice').style.display, 'none', 'notice should hide once the picker opens');
+    await sleep(250);
+    const box = getEl('exeResults').innerHTML;
+    assert(box.includes('fail.exe'), 'picker should list the launch file: ' + box);
+  });
+  await check('Dismiss hides the notice and clears the stored game', async () => {
+    GAMES = [{ key: 'scan-9', row: 'Fail', source: 'scan', scanId: 9, exePath: 'C:\\Games\\Fail\\fail.exe' }];
+    sel = 0;
+    selectGameCalls.length = 0;
+    getEl('gameMenu').style.display = 'none';
+    fastExitHandler({ payload: { game_name: 'Fail', game_key: 'scan-9' } });
+    assert.strictEqual(getEl('fastExitNotice').style.display, 'block', 'notice should be showing');
+    hideFastExitNotice();
+    assert.strictEqual(getEl('fastExitNotice').style.display, 'none', 'notice should hide on Dismiss');
+    fastExitChangeExe();
+    assert.deepStrictEqual(selectGameCalls, [], 'Change after Dismiss must not select a game');
+    assert.strictEqual(getEl('gameMenu').style.display, 'none', 'menu must not open after Dismiss');
+  });
+  await check('notice survives the Steam restore path (stopRunningPoll)', async () => {
+    const n = getEl('fastExitNotice');
+    document.body.classList.add('game-running');
+    fastExitHandler({ payload: { game_name: 'Fail', game_key: 'scan-9' } });
+    assert.strictEqual(n.style.display, 'block', 'notice should be showing');
+    let shown = false;
+    currentSessionId = null;
+    stopRunningPoll({ show: () => { shown = true; return Promise.resolve(); } });
+    assert(!document.body.classList.contains('game-running'), 'game-running class should be removed');
+    assert(shown, 'window should be shown again');
+    assert.strictEqual(n.style.display, 'block', 'notice must survive the restore');
+    hideFastExitNotice();
+  });
+  await check('notice survives the exe restore path (startExePoll)', async () => {
+    GAMES = [{ key: 'scan-9', row: 'Fail', source: 'scan', scanId: 9, exePath: 'C:\\Games\\Fail\\fail.exe' }];
+    sel = 0;
+    const n = getEl('fastExitNotice');
+    document.body.classList.add('game-running');
+    let shown = false;
+    const win = { show: () => { shown = true; return Promise.resolve(); } };
+    mockProcessRunning = true;
+    startExePoll(GAMES[0], null, win);
+    await sleep(2100); // check 1: running -> seen
+    fastExitHandler({ payload: { game_name: 'Fail', game_key: 'scan-9' } });
+    assert.strictEqual(n.style.display, 'block', 'notice should be showing');
+    mockProcessRunning = false;
+    await sleep(2100); // check 2: not running + seen -> restore
+    assert(shown, 'window should be shown again after the exe exits');
+    assert(!document.body.classList.contains('game-running'), 'game-running class should be removed');
+    assert.strictEqual(n.style.display, 'block', 'notice must survive the exe restore');
+    hideFastExitNotice();
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

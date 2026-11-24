@@ -32,14 +32,20 @@ pub mod http_pure {
 }
 
 pub mod art_pure {
-    pub fn steam_cdn_urls(appid: u32) -> (String, String, String) {
+    pub fn steam_cdn_urls(appid: u32) -> (String, String, String, String) {
         (
             format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/header.jpg"),
             format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/library_hero.jpg"),
             format!(
                 "https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/library_600x900.jpg"
             ),
+            format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/logo.png"),
         )
+    }
+    /// PNG magic signature (89 50 4E 47 0D 0A 1A 0A).
+    /// Mirror of `art.rs::is_png_bytes` — the logo validator (v0.2.8).
+    pub fn is_png_bytes(b: &[u8]) -> bool {
+        b.len() >= 8 && b[..8] == [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
     }
     /// JPEG (FF D8 FF), PNG (89 50 4E 47 0D 0A 1A 0A), WebP (RIFF xxxx WEBP).
     /// Mirror of `art.rs::is_image_bytes` — the download validator.
@@ -356,7 +362,7 @@ pub mod art_pure {
 
         #[test]
         fn steam_cdn_urls_follow_the_known_pattern() {
-            let (h, hero, c) = steam_cdn_urls(440);
+            let (h, hero, c, logo) = steam_cdn_urls(440);
             assert_eq!(
                 h,
                 "https://cdn.cloudflare.steamstatic.com/steam/apps/440/header.jpg"
@@ -369,6 +375,23 @@ pub mod art_pure {
                 c,
                 "https://cdn.cloudflare.steamstatic.com/steam/apps/440/library_600x900.jpg"
             );
+            assert_eq!(
+                logo,
+                "https://cdn.cloudflare.steamstatic.com/steam/apps/440/logo.png"
+            );
+        }
+
+        #[test]
+        fn is_png_bytes_accepts_only_the_png_signature() {
+            assert!(is_png_bytes(&[
+                0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00
+            ]));
+            assert!(!is_png_bytes(&[0x89, 0x50, 0x4E, 0x47]));
+            assert!(!is_png_bytes(&[
+                0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x00, 0x00
+            ]));
+            assert!(!is_png_bytes(b"<!DOCTYPE html>"));
+            assert!(!is_png_bytes(b""));
         }
 
         #[test]

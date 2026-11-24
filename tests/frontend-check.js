@@ -145,7 +145,7 @@ const NEEDED_FNS = [
   'isBootVisible', 'tileFocusedHTML', 'tilePlainHTML', 'tileIconHTML', 'escHtml', 'showToast',
   'toggleGameMenu', 'buildGameMenu', 'hideGameMenu',
   'openSearch', 'closeSearch', 'searchGameMatches', 'renderSearchResults',
-  'pickSearchResult', 'toggleThemePlayback', 'applyRealArt',
+  'pickSearchResult', 'toggleThemePlayback', 'applyRealArt', 'updateGameLogo',
   'baseTileFields', 'placeholderArt', 'mapUnifiedGame',
   'saveAutoFetchArt', 'copySgdbLink',
   'pickCoverArt', 'setCoverArtAppid', 'pasteCoverArtUrl', 'retryArt',
@@ -532,7 +532,7 @@ async function main() {
     GAMES = [{ key: 'scan-7', row: 'Hollow Knight', source: 'scan', scanId: 7, exePath: 'C:\\Games\\Hollow Knight\\Hollow Knight.exe', artIsIcon: false, img: 'data:image/svg+xml;tile', bg: bgBefore }];
     sel = 0;
     tileEls = [makeEl('store'), makeEl('tile0')];
-    mockArt = { tile_data_uri: 'data:image/png;base64,AAA', tile_path: 'C:\\art\\scan-7-icon.png', hero_path: null, hero_data_uri: null, capsule_path: 'C:\\art\\scan-7-icon.png', is_icon: true };
+    mockArt = { tile_data_uri: 'data:image/png;base64,AAA', tile_path: 'C:\\art\\scan-7-icon.png', hero_path: null, hero_data_uri: null, capsule_data_uri: 'data:image/png;base64,AAA', capsule_path: 'C:\\art\\scan-7-icon.png', logo_path: null, logo_data_uri: null, is_icon: true };
     invokeLog.length = 0;
     renderCalls = 0;
     const ci = getEl('cardImg');
@@ -558,7 +558,7 @@ async function main() {
     sel = 0;
     tileEls = [makeEl('store'), makeEl('tile0')];
     bgSlides = [makeEl('slide0')];
-    mockArt = { tile_data_uri: 'data:image/jpeg;base64,BBB', tile_path: 'C:\\art\\scan-7-header.jpg', hero_path: 'C:\\art\\scan-7-hero.jpg', hero_data_uri: null, capsule_path: 'C:\\art\\scan-7-capsule.jpg', is_icon: false };
+    mockArt = { tile_data_uri: 'data:image/jpeg;base64,BBB', tile_path: 'C:\\art\\scan-7-header.jpg', hero_path: 'C:\\art\\scan-7-hero.jpg', hero_data_uri: null, capsule_data_uri: 'data:image/jpeg;base64,CCC', capsule_path: 'C:\\art\\scan-7-capsule.jpg', logo_path: null, logo_data_uri: null, is_icon: false };
     renderCalls = 0;
     applyRealArt();
     await sleep(50);
@@ -566,6 +566,91 @@ async function main() {
     assert.strictEqual(GAMES[0].bg, 'asset://localhost/C:/art/scan-7-hero.jpg', 'hero should be set from hero_path, got: ' + GAMES[0].bg);
     assert.strictEqual(renderCalls, 1, 'render should run when the hero arrives');
     assert(tileEls[1].innerHTML.includes('object-fit:cover'), 'tile should stay full-bleed: ' + tileEls[1].innerHTML);
+  });
+
+  console.log('Three-asset Steam art (v0.2.8):');
+  await check('tile uses the capsule first, 16:9 card keeps the header, hero unchanged', async () => {
+    GAMES = [{ key: 'scan-7', row: 'Hollow Knight', source: 'scan', scanId: 7, exePath: 'C:\\Games\\Hollow Knight\\Hollow Knight.exe', artIsIcon: false, img: 'data:image/svg+xml;tile', bg: 'data:image/svg+xml;placeholder' }];
+    sel = 0;
+    tileEls = [makeEl('store'), makeEl('tile0')];
+    bgSlides = [makeEl('slide0')];
+    mockArt = { tile_data_uri: 'data:image/jpeg;base64,HEADER', tile_path: 'C:\\art\\scan-7-header.jpg', hero_path: 'C:\\art\\scan-7-hero.jpg', hero_data_uri: null, capsule_data_uri: 'data:image/jpeg;base64,CAPSULE', capsule_path: 'C:\\art\\scan-7-capsule.jpg', logo_path: null, logo_data_uri: null, is_icon: false };
+    const ci = getEl('cardImg');
+    ci.src = '';
+    renderCalls = 0;
+    applyRealArt();
+    await sleep(50);
+    assert.strictEqual(GAMES[0].img, 'data:image/jpeg;base64,CAPSULE', 'tile should be the capsule, got: ' + GAMES[0].img);
+    assert.strictEqual(GAMES[0].cardImg, 'data:image/jpeg;base64,HEADER', 'card should keep the header, got: ' + GAMES[0].cardImg);
+    assert.strictEqual(ci.src, 'data:image/jpeg;base64,HEADER', 'card image should be the header, got: ' + ci.src);
+    assert.strictEqual(GAMES[0].bg, 'asset://localhost/C:/art/scan-7-hero.jpg', 'hero must still be library_hero.jpg, got: ' + GAMES[0].bg);
+    assert.strictEqual(renderCalls, 1, 'render should run when the hero arrives');
+  });
+  await check('tile falls back to the header when the capsule is missing', async () => {
+    GAMES = [{ key: 'scan-7', row: 'Hollow Knight', source: 'scan', scanId: 7, exePath: 'C:\\Games\\Hollow Knight\\Hollow Knight.exe', artIsIcon: false, img: 'data:image/svg+xml;tile', bg: 'data:image/svg+xml;placeholder' }];
+    sel = 0;
+    tileEls = [makeEl('store'), makeEl('tile0')];
+    mockArt = { tile_data_uri: 'data:image/jpeg;base64,HEADER', tile_path: 'C:\\art\\scan-7-header.jpg', hero_path: null, hero_data_uri: null, capsule_data_uri: null, capsule_path: null, logo_path: null, logo_data_uri: null, is_icon: false };
+    applyRealArt();
+    await sleep(50);
+    assert.strictEqual(GAMES[0].img, 'data:image/jpeg;base64,HEADER', 'tile should fall back to the header, got: ' + GAMES[0].img);
+    assert.strictEqual(GAMES[0].cardImg, 'data:image/jpeg;base64,HEADER', 'card should be the header too');
+  });
+  await check('logo shows above Play when present; text title hides on load', async () => {
+    GAMES = [{ key: 'steam-367520', row: 'Hollow Knight', source: 'steam', appid: '367520', img: 'data:image/svg+xml;tile', bg: 'data:image/svg+xml;placeholder' }];
+    sel = 0;
+    tileEls = [makeEl('store'), makeEl('tile0')];
+    mockArt = { tile_data_uri: 'data:image/jpeg;base64,HEADER', tile_path: 'C:\\art\\steam-367520-header.jpg', hero_path: null, hero_data_uri: null, capsule_data_uri: 'data:image/jpeg;base64,CAPSULE', capsule_path: 'C:\\art\\steam-367520-capsule.jpg', logo_data_uri: 'data:image/png;base64,LOGO', logo_path: 'C:\\art\\steam-367520-logo.png', is_icon: false };
+    const img = getEl('gameLogoImg');
+    const title = getEl('gameLogo');
+    img.style.display = 'none';
+    title.style.display = '';
+    applyRealArt();
+    await sleep(50);
+    assert.strictEqual(GAMES[0].logoUrl, 'data:image/png;base64,LOGO', 'logoUrl should be set from logo_data_uri');
+    assert.strictEqual(title.style.display, '', 'title should stay visible while the logo loads');
+    assert.strictEqual(img.style.display, 'none', 'logo should stay hidden while loading');
+    assert.strictEqual(typeof img.onload, 'function', 'logo should have a load handler');
+    img.onload();
+    assert.strictEqual(img.style.display, 'block', 'logo should show after load');
+    assert.strictEqual(title.style.display, 'none', 'title should hide once the logo loads');
+  });
+  await check('text title stays when the game has no logo', async () => {
+    GAMES = [{ key: 'scan-7', row: 'Hollow Knight', source: 'scan', scanId: 7, img: 'data:image/svg+xml;tile', bg: 'data:image/svg+xml;placeholder' }];
+    sel = 0;
+    tileEls = [makeEl('store'), makeEl('tile0')];
+    mockArt = { tile_data_uri: 'data:image/jpeg;base64,HEADER', tile_path: 'C:\\art\\scan-7-header.jpg', hero_path: null, hero_data_uri: null, capsule_data_uri: 'data:image/jpeg;base64,CAPSULE', capsule_path: 'C:\\art\\scan-7-capsule.jpg', logo_path: null, logo_data_uri: null, is_icon: false };
+    const img = getEl('gameLogoImg');
+    const title = getEl('gameLogo');
+    img.style.display = 'block';
+    title.style.display = 'none';
+    applyRealArt();
+    await sleep(50);
+    assert.strictEqual(GAMES[0].logoUrl, undefined, 'logoUrl must stay unset without a logo');
+    assert.strictEqual(img.style.display, 'none', 'logo img should hide without a logo');
+    assert.strictEqual(title.style.display, '', 'text title should show without a logo');
+  });
+  await check('logo load error falls back to the text title', async () => {
+    GAMES = [{ key: 'steam-367520', row: 'Hollow Knight', source: 'steam', appid: '367520', img: 'data:image/svg+xml;tile', bg: 'data:image/svg+xml;placeholder' }];
+    sel = 0;
+    tileEls = [makeEl('store'), makeEl('tile0')];
+    mockArt = { tile_data_uri: 'data:image/jpeg;base64,HEADER', tile_path: 'C:\\art\\steam-367520-header.jpg', hero_path: null, hero_data_uri: null, capsule_data_uri: 'data:image/jpeg;base64,CAPSULE', capsule_path: 'C:\\art\\steam-367520-capsule.jpg', logo_data_uri: 'data:image/png;base64,LOGO', logo_path: 'C:\\art\\steam-367520-logo.png', is_icon: false };
+    const img = getEl('gameLogoImg');
+    const title = getEl('gameLogo');
+    applyRealArt();
+    await sleep(50);
+    assert.strictEqual(typeof img.onerror, 'function', 'logo should have an error handler');
+    img.onerror();
+    assert.strictEqual(img.style.display, 'none', 'logo should hide on load error');
+    assert.strictEqual(title.style.display, '', 'text title should show on load error');
+  });
+  await check('logo element exists with the PS5 sizing and render() wires the card + logo', async () => {
+    assert(html.includes('id="gameLogoImg"'), 'missing gameLogoImg element');
+    assert(html.includes('max-height:120px'), 'logo should cap at 120px height');
+    assert(html.includes('max-width:420px'), 'logo should cap at 420px width');
+    assert(html.includes('drop-shadow'), 'logo should have a drop-shadow');
+    assert(html.includes('cardImgEl.src = g.cardImg || g.img'), 'render should prefer the header card image');
+    assert(html.includes('updateGameLogo()'), 'render should call updateGameLogo');
   });
 
   console.log('Fail-soft dialog (v0.2.7):');

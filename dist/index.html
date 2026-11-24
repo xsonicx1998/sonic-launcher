@@ -56,6 +56,7 @@
     <div id="searchResults" style="margin-top:8px;max-height:300px;overflow-y:auto"></div>
   </div>
   <div id="heroBlock" style="position:absolute;z-index:2;left:clamp(28px,3.6vw,64px);bottom:clamp(48px,6.5vh,84px);max-width:clamp(470px,44vw,740px)">
+    <img id="gameLogoImg" alt="" style="display:none;max-height:120px;max-width:420px;object-fit:contain;filter:drop-shadow(0 2px 8px rgba(0,0,0,.6))">
     <div id="gameLogo" style="font-size:clamp(34px,3.2vw,54px);font-weight:500;line-height:1.05;letter-spacing:.01em;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)"></div>
     <div id="gameTag" style="font-size:clamp(14.5px,1.15vw,19px);font-weight:400;color:rgba(255,255,255,.96);margin-top:10px;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)"></div>
     <div id="gameMeta" style="font-size:12px;font-weight:300;color:rgba(255,255,255,.58);margin-top:6px;font-variant-numeric:tabular-nums;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)"></div>
@@ -249,16 +250,56 @@ function setHeroBg(idx){
   }, 450);
   currentBgEl = el;
 }
+/* v0.2.8: Steam game logo above the Play button. Shows the cached
+   logo.png when the selected game has one; the clean white text
+   title stays the fallback (missing logo, or a load error), so the
+   detail area never shows a broken image or an empty gap. The
+   title stays visible until the logo loads, and a slow load from
+   a previous game can never surface after the user moved on. */
+function updateGameLogo(){
+  var g = GAMES[sel];
+  var img = document.getElementById('gameLogoImg');
+  var title = document.getElementById('gameLogo');
+  if(!g || !img || !title){ return; }
+  if(!g.logoUrl){
+    img.style.display = 'none';
+    title.style.display = '';
+    return;
+  }
+  img.dataset.gameKey = g.key;
+  img.onload = function(){
+    if(img.dataset.gameKey !== GAMES[sel].key){ return; }
+    img.style.display = 'block';
+    title.style.display = 'none';
+  };
+  img.onerror = function(){
+    if(img.dataset.gameKey !== GAMES[sel].key){ return; }
+    img.style.display = 'none';
+    title.style.display = '';
+  };
+  if(img.getAttribute('src') !== g.logoUrl){
+    /* New logo: keep the title visible until the image loads. */
+    img.style.display = 'none';
+    title.style.display = '';
+    img.src = g.logoUrl;
+  } else if(img.complete && img.naturalWidth > 0){
+    img.style.display = 'block';
+    title.style.display = 'none';
+  }
+}
 function render(){
   var g = GAMES[sel];
   document.getElementById('rowTitle').innerHTML = '<span class="title-in">'+escHtml(g.row)+'</span> <span class="ps5-platform-badge">'+escHtml(g.platform || (g.key === 'astro' ? 'PS5' : 'PS4'))+'</span>';
   /* g.logo must stay pre-escaped HTML from its verified producers only (hardcoded demo strings; baseTileFields with escHtml) -- never assign raw/untrusted markup here. */
   document.getElementById('gameLogo').innerHTML = g.logo;
+  updateGameLogo();
   document.getElementById('gameTag').textContent = g.tag;
   document.getElementById('gameMeta').textContent = g.meta;
   document.getElementById('gameStats').textContent = g.hours + '  •  Last played ' + g.last;
   var cardImgEl = document.getElementById('cardImg');
-  cardImgEl.src = g.img;
+  /* v0.2.8: the 16:9 "Full Game" card keeps the landscape header;
+     the square row tile uses the portrait capsule (g.img). */
+  cardImgEl.src = g.cardImg || g.img;
   /* v0.2.6: an .exe icon sits centered (contain) on the gradient;
      real covers fill the card (cover). */
   cardImgEl.style.objectFit = g.artIsIcon ? 'contain' : 'cover';
@@ -620,7 +661,9 @@ function fmtDur(s){ s = Math.round(s); return Math.floor(s/60) + ':' + ('0' + (s
 
 /* Phase 2: fetch real art per real game. Tile uses the base64 data URI
    (small, bulletproof); hero uses convertFileSrc with a data-URI
-   fallback on error. */
+   fallback on error. v0.2.8: the square tile is the portrait capsule
+   (600x900) with the header as fallback; the 16:9 card keeps the
+   header; the Steam logo goes above the Play button. */
 function applyRealArt(){
   var core = tauriCore();
   if(!core){ return; }
@@ -628,16 +671,24 @@ function applyRealArt(){
     if(!g.source || g.source === 'demo'){ return; }
     core.invoke('get_game_art', { gameKey: g.key, appid: g.appid || null, name: g.row, exePath: g.exePath || null }).then(function(art){
       if(!art){ return; }
-      var tileUrl = art.tile_data_uri || ((core.convertFileSrc && art.tile_path) ? core.convertFileSrc(art.tile_path) : null);
+      var headerUrl = art.tile_data_uri || ((core.convertFileSrc && art.tile_path) ? core.convertFileSrc(art.tile_path) : null);
+      var capsuleUrl = art.capsule_data_uri || ((core.convertFileSrc && art.capsule_path) ? core.convertFileSrc(art.capsule_path) : null);
+      var tileUrl = capsuleUrl || headerUrl;
       var heroUrl = (core.convertFileSrc && art.hero_path) ? core.convertFileSrc(art.hero_path) : (art.hero_data_uri || null);
+      var logoUrl = art.logo_data_uri || ((core.convertFileSrc && art.logo_path) ? core.convertFileSrc(art.logo_path) : null);
+      /* v0.2.8: the logo is independent of the tile — apply (or
+         clear) it for the selected game whenever art arrives. */
+      if(logoUrl){ g.logoUrl = logoUrl; } else { delete g.logoUrl; }
+      if(i === sel){ updateGameLogo(); }
       if(tileUrl){
         g.img = tileUrl;
+        g.cardImg = headerUrl || tileUrl;
         /* v0.2.6: an .exe icon keeps the gradient hero — never
            stretched full-bleed as a background. */
         if(art.is_icon){ g.artIsIcon = true; }
         var el = tileEls[i+1];
         if(el){ el.innerHTML = (i === sel) ? tileFocusedHTML(g) : tilePlainHTML(g); }
-        if(i === sel){ var ci = document.getElementById('cardImg'); if(ci){ ci.src = tileUrl; ci.style.objectFit = g.artIsIcon ? 'contain' : 'cover'; if(ci.parentElement){ ci.parentElement.style.background = g.artIsIcon ? 'linear-gradient(135deg,#8B20FF,#00C8FF,#F02DCD)' : ''; } } }
+        if(i === sel){ var ci = document.getElementById('cardImg'); if(ci){ ci.src = g.cardImg; ci.style.objectFit = g.artIsIcon ? 'contain' : 'cover'; if(ci.parentElement){ ci.parentElement.style.background = g.artIsIcon ? 'linear-gradient(135deg,#8B20FF,#00C8FF,#F02DCD)' : ''; } } }
       }
       if(heroUrl && !art.is_icon){
         g.bg = heroUrl;

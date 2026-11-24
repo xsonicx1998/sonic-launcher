@@ -1,9 +1,13 @@
 //! Game art auto-download (Phase 2).
 //!
 //! Primary source: the free Steam CDN (no key needed) — per appid:
-//! - tile:    `.../steam/apps/{appid}/header.jpg`
+//! - tile:    `.../steam/apps/{appid}/library_600x900.jpg`
+//!            (portrait box art; `header.jpg` as fallback)
 //! - hero:    `.../steam/apps/{appid}/library_hero.jpg`
-//! - capsule: `.../steam/apps/{appid}/library_600x900.jpg`
+//! - logo:    `.../steam/apps/{appid}/logo.png` (v0.2.8, PNG only;
+//!            a 404 is recorded and not re-fetched for 14 days)
+//! - header:  `.../steam/apps/{appid}/header.jpg` (16:9 card +
+//!            tile fallback when the capsule is missing)
 //!
 //! Optional source: SteamGridDB, when the user saved their own API key
 //! in Settings (stored in the settings table, never hardcoded, never
@@ -47,16 +51,25 @@ use crate::http;
 /// Art for one game, as exposed to the frontend.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct GameArt {
-    /// Local path of the tile image (Steam header or SGDB grid).
+    /// Local path of the tile image (Steam header or SGDB grid) —
+    /// the fallback when the portrait capsule is missing.
     pub tile_path: Option<String>,
     /// Local path of the hero background image.
     pub hero_path: Option<String>,
-    /// Local path of the portrait capsule image.
+    /// Local path of the portrait capsule image (Steam 600x900 or
+    /// SGDB grid) — the tile since v0.2.8.
     pub capsule_path: Option<String>,
+    /// Local path of the Steam game logo (logo.png, v0.2.8).
+    /// `None` when the game has no Steam logo (or no Steam appid).
+    pub logo_path: Option<String>,
     /// Base64 data URI of the tile (fallback when convertFileSrc fails).
     pub tile_data_uri: Option<String>,
     /// Base64 data URI of the hero (fallback when convertFileSrc fails).
     pub hero_data_uri: Option<String>,
+    /// Base64 data URI of the portrait capsule (the tile, v0.2.8).
+    pub capsule_data_uri: Option<String>,
+    /// Base64 data URI of the logo (v0.2.8).
+    pub logo_data_uri: Option<String>,
     /// `true` when the tile is the game's own .exe icon (v0.2.6):
     /// the frontend renders it centered on the Sonic gradient
     /// card instead of stretched full-bleed like a real cover.
@@ -74,12 +87,13 @@ pub fn art_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-/// The three Steam CDN URLs for one appid. Pure — unit-tested.
-pub fn steam_cdn_urls(appid: u32) -> (String, String, String) {
+/// The four Steam CDN URLs for one appid. Pure — unit-tested.
+pub fn steam_cdn_urls(appid: u32) -> (String, String, String, String) {
     (
         format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/header.jpg"),
         format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/library_hero.jpg"),
         format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/library_600x900.jpg"),
+        format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/logo.png"),
     )
 }
 
@@ -106,6 +120,17 @@ fn file_name(game_key: &str, kind: &str) -> String {
 /// so the icon's transparency survives.
 fn icon_file_name(game_key: &str) -> String {
     format!("{}-icon.png", safe_key(game_key))
+}
+
+/// Cache file for a Steam game logo (v0.2.8): PNG, so the logo's
+/// transparency survives.
+fn logo_file_name(game_key: &str) -> String {
+    format!("{}-logo.png", safe_key(game_key))
+}
+
+/// PNG magic signature (89 50 4E 47 0D 0A 1A 0A). Pure — unit-tested.
+pub fn is_png_bytes(b: &[u8]) -> bool {
+    b.len() >= 8 && b[..8] == [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
 }
 
 fn mime_for(path: &PathBuf) -> &'static str {
@@ -136,13 +161,16 @@ fn path_str(p: &PathBuf) -> Option<String> {
     }
 }
 
-fn build_art(tile: &PathBuf, hero: &PathBuf, capsule: &PathBuf) -> GameArt {
+fn build_art(tile: &PathBuf, hero: &PathBuf, capsule: &PathBuf, logo: &PathBuf) -> GameArt {
     GameArt {
         tile_path: path_str(tile),
         hero_path: path_str(hero),
         capsule_path: path_str(capsule),
+        logo_path: path_str(logo),
         tile_data_uri: data_uri(tile),
         hero_data_uri: data_uri(hero),
+        capsule_data_uri: data_uri(capsule),
+        logo_data_uri: data_uri(logo),
         is_icon: false,
     }
 }
@@ -155,8 +183,11 @@ fn build_icon_art(icon: &PathBuf) -> GameArt {
         tile_path: path_str(icon),
         hero_path: None,
         capsule_path: path_str(icon),
+        logo_path: None,
         tile_data_uri: data_uri(icon),
         hero_data_uri: None,
+        capsule_data_uri: data_uri(icon),
+        logo_data_uri: None,
         is_icon: true,
     }
 }
@@ -664,19 +695,89 @@ pub enum ArtResolve {
     NotScanned,
 }
 
+/// Marker file recording a failed logo download (v0.2.8): the
+/// unix time of the failure, so a missing logo is not re-fetched
+/// on every scan — same 14-day cooldown as a failed keyless art
+/// lookup (`art_lookup_blocked`). A file marker (not a DB column)
+/// because Steam-library games have no `scanned_games` row.
+fn logo_miss_file(app: &AppHandle, game_key: &str) -> Option<PathBuf> {
+    art_dir(app)
+        .ok()
+        .map(|dir| dir.join(format!("{}-logo.miss", safe_key(game_key))))
+}
+
+/// `true` when a recorded logo miss still blocks a fresh download.
+fn logo_miss_blocked(app: &AppHandle, game_key: &str) -> bool {
+    let Some(path) = logo_miss_file(app, game_key) else {
+        return false;
+    };
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return false;
+    };
+    art_lookup_blocked(text.trim().parse().ok(), db::now())
+}
+
+fn mark_logo_miss(app: &AppHandle, game_key: &str) {
+    if let Some(path) = logo_miss_file(app, game_key) {
+        let _ = std::fs::write(&path, db::now().to_string());
+    }
+}
+
+fn clear_logo_miss(app: &AppHandle, game_key: &str) {
+    if let Some(path) = logo_miss_file(app, game_key) {
+        let _ = std::fs::remove_file(&path);
+    }
+}
+
+/// Download a Steam game logo (v0.2.8): PNG only, 10 MB cap, PNG
+/// magic check, cached in the art dir. A miss is recorded so the
+/// logo is not re-fetched for 14 days. Returns `true` when the
+/// logo file exists afterwards (downloaded or already cached).
+/// A missing logo is normal — never an error.
+fn download_logo_art(app: &AppHandle, game_key: &str, logo_url: &str) -> bool {
+    let Ok(dir) = art_dir(app) else {
+        return false;
+    };
+    let dest = dir.join(logo_file_name(game_key));
+    if let Ok(meta) = std::fs::metadata(&dest) {
+        if meta.len() > 0 {
+            return true; // cache hit
+        }
+    }
+    if logo_miss_blocked(app, game_key) {
+        return false;
+    }
+    let Ok(bytes) = crate::http::download_bytes_with_header(logo_url, None) else {
+        mark_logo_miss(app, game_key);
+        return false;
+    };
+    if bytes.len() > MAX_ART_BYTES || !is_png_bytes(&bytes) {
+        mark_logo_miss(app, game_key);
+        return false;
+    }
+    if std::fs::write(&dest, bytes).is_ok() {
+        clear_logo_miss(app, game_key);
+        return true;
+    }
+    mark_logo_miss(app, game_key);
+    false
+}
+
 /// Download the three Steam CDN images for an appid. Returns `true`
 /// when the tile file exists afterwards.
 fn download_steam_art(app: &AppHandle, game_key: &str, appid: u32) -> bool {
     let Ok(dir) = art_dir(app) else {
         return false;
     };
-    let (header_url, hero_url, capsule_url) = steam_cdn_urls(appid);
+    let (header_url, hero_url, capsule_url, logo_url) = steam_cdn_urls(appid);
     let tile = dir.join(file_name(game_key, "header"));
     let hero = dir.join(file_name(game_key, "hero"));
     let capsule = dir.join(file_name(game_key, "capsule"));
     download_art(&header_url, &tile, None);
     download_art(&hero_url, &hero, None);
     download_art(&capsule_url, &capsule, None);
+    // Logo last (v0.2.8): optional — a miss is recorded, never an error.
+    let _ = download_logo_art(app, game_key, &logo_url);
     tile.is_file()
 }
 
@@ -940,13 +1041,16 @@ pub fn get_game_art(
     let tile = dir.join(file_name(game_key, "header"));
     let hero = dir.join(file_name(game_key, "hero"));
     let capsule = dir.join(file_name(game_key, "capsule"));
+    let logo = dir.join(logo_file_name(game_key));
 
     if let Some(id) = appid {
-        let (header_url, hero_url, capsule_url) = steam_cdn_urls(id);
+        let (header_url, hero_url, capsule_url, logo_url) = steam_cdn_urls(id);
         download_art(&header_url, &tile, None);
         download_art(&hero_url, &hero, None);
         download_art(&capsule_url, &capsule, None);
-        return build_art(&tile, &hero, &capsule);
+        // Logo last (v0.2.8): optional — a miss is recorded, never an error.
+        let _ = download_logo_art(app, game_key, &logo_url);
+        return build_art(&tile, &hero, &capsule, &logo);
     }
 
     // Scanned games: a manual cover wins over everything, and a
@@ -955,12 +1059,12 @@ pub fn get_game_art(
     if let Some(scan_id) = db::scanned_id_from_key(game_key) {
         if let Ok(Some(game)) = db::get_scanned_game(app, scan_id) {
             if game.art_source.as_deref() == Some("manual") {
-                return build_art(&tile, &hero, &capsule);
+                return build_art(&tile, &hero, &capsule, &logo);
             }
             if let Some(resolved) = game.resolved_appid.and_then(|a| u32::try_from(a).ok()) {
                 if steamgriddb_key(app).is_none() {
                     download_steam_art(app, game_key, resolved);
-                    return build_art(&tile, &hero, &capsule);
+                    return build_art(&tile, &hero, &capsule, &logo);
                 }
             }
         }
@@ -995,7 +1099,7 @@ pub fn get_game_art(
         }
     }
 
-    build_art(&tile, &hero, &capsule)
+    build_art(&tile, &hero, &capsule, &logo)
 }
 
 /// Let the user pick a local image as this game's cover. The image
@@ -1046,9 +1150,13 @@ pub fn set_cover_art_appid(app: &AppHandle, game_key: &str, appid: u32) -> Resul
     let hero = dir.join(file_name(game_key, "hero"));
     let capsule = dir.join(file_name(game_key, "capsule"));
     // Clear any previous cover so a cache hit cannot fake a success.
+    // The logo goes too — it belongs to the old AppID — and its miss
+    // marker, so the new AppID's logo is fetched fresh.
     let _ = std::fs::remove_file(&tile);
     let _ = std::fs::remove_file(&hero);
     let _ = std::fs::remove_file(&capsule);
+    let _ = std::fs::remove_file(&dir.join(logo_file_name(game_key)));
+    clear_logo_miss(app, game_key);
     if !download_steam_art(app, game_key, appid) {
         return Err(format!("Steam has no cover art for AppID {appid}"));
     }
@@ -1095,6 +1203,8 @@ pub fn retry_art(app: &AppHandle, game_key: &str, name: &str) -> Result<String, 
         return Err("Retry Art is only for scanned games".to_string());
     };
     let _ = db::clear_art_lookup_failed(app, id);
+    // A manual retry re-attempts the logo too.
+    clear_logo_miss(app, game_key);
     Ok(match resolve_art_for_game(app, game_key, name) {
         ArtResolve::Found => "Cover art found".to_string(),
         ArtResolve::NotFound => "No cover found for this game".to_string(),
@@ -1113,7 +1223,7 @@ mod tests {
 
     #[test]
     fn steam_cdn_urls_follow_the_known_pattern() {
-        let (h, hero, c) = steam_cdn_urls(440);
+        let (h, hero, c, logo) = steam_cdn_urls(440);
         assert_eq!(
             h,
             "https://cdn.cloudflare.steamstatic.com/steam/apps/440/header.jpg"
@@ -1125,6 +1235,35 @@ mod tests {
         assert_eq!(
             c,
             "https://cdn.cloudflare.steamstatic.com/steam/apps/440/library_600x900.jpg"
+        );
+        assert_eq!(
+            logo,
+            "https://cdn.cloudflare.steamstatic.com/steam/apps/440/logo.png"
+        );
+    }
+
+    #[test]
+    fn is_png_bytes_accepts_only_the_png_signature() {
+        assert!(is_png_bytes(&[
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00
+        ]));
+        assert!(is_png_bytes(&[
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A
+        ]));
+        assert!(!is_png_bytes(&[0x89, 0x50, 0x4E, 0x47])); // too short
+        assert!(!is_png_bytes(&[
+            0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x00, 0x00
+        ])); // JPEG
+        assert!(!is_png_bytes(b"<!DOCTYPE html>"));
+        assert!(!is_png_bytes(b""));
+    }
+
+    #[test]
+    fn logo_file_name_is_png_and_sanitized() {
+        assert_eq!(logo_file_name("steam-440"), "steam-440-logo.png");
+        assert_eq!(
+            logo_file_name("weird key/with:chars"),
+            "weird_key_with_chars-logo.png"
         );
     }
 

@@ -819,6 +819,17 @@ fn download_gog_art(app: &AppHandle, game_key: &str, cover: &GogCover) -> bool {
     tile.is_file()
 }
 
+/// `true` when a scanned game's art is already settled — a manual
+/// cover, a cached GOG cover, or a resolved Steam appid — so no
+/// store lookup is needed. An exe-icon fallback is NOT settled
+/// (v0.2.12): the icon is the last resort, and a game showing it
+/// still needs a store lookup — a hit replaces the icon with the
+/// real cover, a genuine miss records the failure (which surfaces
+/// "Retry Art" in the ••• menu). Pure — unit-tested.
+pub fn art_already_resolved(art_source: Option<&str>, resolved_appid: Option<i64>) -> bool {
+    resolved_appid.is_some() || matches!(art_source, Some("manual") | Some("gog"))
+}
+
 /// Resolve art for one scanned game: cached Steam appid first, then
 /// the Steam store search, then the GOG Catalog. Hits are cached in
 /// the DB; a double miss records the failure time (14-day cooldown).
@@ -833,19 +844,19 @@ pub fn resolve_art_for_game(app: &AppHandle, game_key: &str, name: &str) -> ArtR
     if game.art_source.as_deref() == Some("manual") {
         return ArtResolve::Manual;
     }
-    // An exe-icon fallback is already cached on disk — nothing to
-    // look up, and a later store hit must not replace it silently
-    // (the user can still pick a manual cover instead).
-    if game.art_source.as_deref() == Some("icon") {
-        return ArtResolve::Found;
-    }
-    // A cached Steam appid: download the CDN art, no lookup needed.
-    if let Some(appid) = game.resolved_appid.and_then(|a| u32::try_from(a).ok()) {
-        download_steam_art(app, game_key, appid);
-        return ArtResolve::Found;
-    }
-    // A cached GOG hit: the files are already on disk.
-    if game.art_source.as_deref() == Some("gog") {
+    // Settled art (a resolved Steam appid or a cached GOG cover)
+    // needs no lookup. An exe-icon fallback is NOT settled
+    // (v0.2.12): the icon is the last resort, so the lookup below
+    // still runs for it — a hit replaces the icon with the real
+    // cover, a genuine miss records the failure (which surfaces
+    // "Retry Art"). The old early-return froze icon games on the
+    // icon forever after any transient lookup failure.
+    if art_already_resolved(game.art_source.as_deref(), game.resolved_appid) {
+        // A cached Steam appid: download the CDN art, no lookup needed.
+        if let Some(appid) = game.resolved_appid.and_then(|a| u32::try_from(a).ok()) {
+            download_steam_art(app, game_key, appid);
+        }
+        // A cached GOG hit: the files are already on disk.
         return ArtResolve::Found;
     }
     if !is_auto_fetch_art_enabled(app) {
@@ -904,11 +915,10 @@ pub fn run_art_lookup_worker(app: &AppHandle) {
         return;
     };
     for game in games {
-        if game.art_source.as_deref() == Some("manual")
-            || game.resolved_appid.is_some()
-            || game.art_source.as_deref() == Some("gog")
-            || game.art_source.as_deref() == Some("icon")
-        {
+        // Settled art needs no lookup. An exe-icon fallback is not
+        // settled (v0.2.12) — the worker retries it like any other
+        // art-less game.
+        if art_already_resolved(game.art_source.as_deref(), game.resolved_appid) {
             continue;
         }
         if art_lookup_blocked(game.art_lookup_failed_at, db::now()) {
@@ -1464,6 +1474,34 @@ mod tests {
         // Best below 0.85 -> None.
         assert_eq!(pick_match("Doom", &["Doom Eternal".to_string()]), None);
         assert_eq!(pick_match("Doom", &[] as &[String]), None);
+    }
+
+    #[test]
+    fn pick_match_grand_theft_auto_v_is_a_tier1_exact_match() {
+        // v0.2.12 diagnosis: GTA V's missing cover is NOT a matching
+        // failure — the store search matches it exactly (Roman V -> 5),
+        // so its first lookup must have failed transiently (network)
+        // and the old art_source=='icon' short-circuit then froze it
+        // on the exe icon forever.
+        let cands = vec![
+            "Grand Theft Auto V: Premium Edition".to_string(),
+            "Grand Theft Auto V".to_string(),
+            "Grand Theft Auto IV".to_string(),
+        ];
+        assert_eq!(pick_match("Grand Theft Auto V", &cands), Some(1));
+    }
+
+    #[test]
+    fn art_already_resolved_settles_manual_gog_and_appid_not_icon() {
+        // Settled: no store lookup needed.
+        assert!(art_already_resolved(Some("manual"), None));
+        assert!(art_already_resolved(Some("gog"), None));
+        assert!(art_already_resolved(Some("steam"), Some(271590)));
+        assert!(art_already_resolved(None, Some(271590)));
+        // Not settled: the lookup must still run.
+        assert!(!art_already_resolved(Some("icon"), None));
+        assert!(!art_already_resolved(None, None));
+        assert!(!art_already_resolved(Some("steam"), None));
     }
 
     #[test]

@@ -544,6 +544,19 @@ async function main() {
     buildGameMenu();
     assert(!m.innerHTML.includes('Set Cover Art'), 'games without a source should not get cover-art items');
   });
+  await check('••• menu shows Retry Art for an icon-fallback game with a failed lookup (v0.2.12)', async () => {
+    const m = getEl('gameMenu');
+    // GTA V case: the tile is the exe icon (artIsIcon) AND the lookup
+    // failed (artFailed) — Retry Art must still show; the icon
+    // fallback must not hide the retry.
+    GAMES = [{ key: 'scan-9', row: 'Grand Theft Auto V', source: 'scan', scanId: 9, artFailed: true, artIsIcon: true }];
+    sel = 0;
+    buildGameMenu();
+    assert(m.innerHTML.includes('Retry Art'), 'missing Retry Art for icon-fallback game with artFailed: ' + m.innerHTML);
+    GAMES = [{ key: 'scan-10', row: 'Some Game', source: 'scan', scanId: 10, artFailed: false, artIsIcon: true }];
+    buildGameMenu();
+    assert(!m.innerHTML.includes('Retry Art'), 'Retry Art should not show for icon game without a failed lookup');
+  });
   await check('pickCoverArt invokes pick_cover_art and refreshes', async () => {
     GAMES = [{ key: 'scan-7', row: 'Hollow Knight', source: 'scan', scanId: 7 }];
     sel = 0;

@@ -113,6 +113,13 @@ pub mod art_pure {
             None => false,
         }
     }
+    /// Mirror of `art.rs::art_already_resolved` (v0.2.12): a manual
+    /// cover, a cached GOG cover, or a resolved Steam appid means
+    /// the art is settled and no store lookup is needed; an
+    /// exe-icon fallback is NOT settled and must still be looked up.
+    pub fn art_already_resolved(art_source: Option<&str>, resolved_appid: Option<i64>) -> bool {
+        resolved_appid.is_some() || matches!(art_source, Some("manual") | Some("gog"))
+    }
     const EDITION_SUFFIXES: &[&str] = &[
         "game of the year edition",
         "game of the year",
@@ -550,6 +557,34 @@ pub mod art_pure {
             );
             assert_eq!(pick_match("Doom", &["Doom Eternal".to_string()]), None);
             assert_eq!(pick_match("Doom", &[] as &[String]), None);
+        }
+
+        #[test]
+        fn pick_match_grand_theft_auto_v_is_a_tier1_exact_match() {
+            // v0.2.12 diagnosis: GTA V's missing cover is NOT a matching
+            // failure — the store search matches it exactly (Roman V -> 5),
+            // so its first lookup must have failed transiently (network)
+            // and the old art_source=='icon' short-circuit then froze it
+            // on the exe icon forever.
+            let cands = vec![
+                "Grand Theft Auto V: Premium Edition".to_string(),
+                "Grand Theft Auto V".to_string(),
+                "Grand Theft Auto IV".to_string(),
+            ];
+            assert_eq!(pick_match("Grand Theft Auto V", &cands), Some(1));
+        }
+
+        #[test]
+        fn art_already_resolved_settles_manual_gog_and_appid_not_icon() {
+            // Settled: no store lookup needed.
+            assert!(art_already_resolved(Some("manual"), None));
+            assert!(art_already_resolved(Some("gog"), None));
+            assert!(art_already_resolved(Some("steam"), Some(271590)));
+            assert!(art_already_resolved(None, Some(271590)));
+            // Not settled: the lookup must still run.
+            assert!(!art_already_resolved(Some("icon"), None));
+            assert!(!art_already_resolved(None, None));
+            assert!(!art_already_resolved(Some("steam"), None));
         }
 
         #[test]

@@ -498,76 +498,90 @@ fn main() {
             //
             // v0.2.10: two things keep the host alive, and BOTH are
             // needed. (1) The tray icon is the only way back to the
-            // window once it is destroyed — it must actually exist:
-            // `default_window_icon()` is Option, so a missing icon
-            // used to skip tray creation entirely. (2) A tray icon
-            // alone does NOT keep the process alive: the Tauri
-            // runtime asks to exit when the last window is
+            // window once it is destroyed — it must actually exist.
+            // (2) A tray icon alone does NOT keep the process alive:
+            // the Tauri runtime asks to exit when the last window is
             // destroyed, and only the run callback in main() can
             // prevent that. Without (2) the v0.2.9 build exited the
             // whole process on Play — no host, no tray icon, no
             // window recreation, no fail-soft notice.
             //
-            // The menu is also the only way to quit: the window is
-            // borderless (no close button), and with exit prevented
-            // the app never ends on its own. "Quit" calls app.exit,
-            // which the run callback lets through (code Some).
-            if let Some(icon) = app.default_window_icon() {
-                let menu = tauri::menu::MenuBuilder::new(app)
-                    .text("show", "Show Launcher")
-                    .separator()
-                    .text("quit", "Quit")
-                    .build()?;
-                let _tray = tauri::tray::TrayIconBuilder::with_id("main")
-                    .icon(icon.clone())
-                    .menu(&menu)
-                    .tooltip("Sonic Launcher")
-                    // Left-click shows the window, right-click shows the
-                    // menu. The builder default is true (menu on left
-                    // click too), which used to open the menu AND show
-                    // the window on every click.
-                    .show_menu_on_left_click(false)
-                    .on_menu_event(|app, event| {
-                        if event.id() == "quit" {
-                            app.exit(0);
-                        } else if event.id() == "show" {
-                            let handle = app.clone();
-                            let _ = session::show_or_recreate_window(&handle);
-                        }
-                    })
-                    .on_tray_icon_event(|tray, event| {
-                        // Left-button release ONLY: any click (incl.
-                        // right-click, which also opens the menu) used
-                        // to show the window over the running game.
-                        // Field names verified against the vendored
-                        // tauri 2.12.7 crate sources on this VM.
-                        if let tauri::tray::TrayIconEvent::Click {
-                            button: tauri::tray::MouseButton::Left,
-                            button_state: tauri::tray::MouseButtonState::Up,
-                            ..
-                        } = event
-                        {
-                            let handle = tray.app_handle().clone();
-                            // Never build a window on the main thread:
-                            // the tray event arrives there, and Tauri
-                            // warns that creating windows there can
-                            // deadlock on Windows.
-                            std::thread::spawn(move || {
-                                let _ = session::show_or_recreate_window(&handle);
-                            });
-                        }
-                    })
-                    .build(app)?;
-            } else {
-                // No icon, no tray: destroying the window would
-                // strand a live process with no way back to the UI.
-                // Loud on stderr (visible when run from a terminal);
-                // this must never happen in a real build — the icon
-                // is embedded by tauri-build from src-tauri/icons/.
-                eprintln!(
-                    "WARNING: Sonic Launcher has no default window icon; no tray icon was created"
-                );
+            // v0.2.12: (1) was still broken — the tray was created
+            // ONLY when `default_window_icon()` returned Some, but
+            // that call loads icon resource 32512 out of the exe,
+            // and when the load fails the whole tray was silently
+            // skipped (the only trace an eprintln nobody sees in a
+            // GUI build). The tray icon now comes from the shipped
+            // 32x32 PNG embedded at compile time instead — the same
+            // bytes as the .ico's 32 px entry — and the tray is
+            // created even when no icon can be loaded at all
+            // (Windows shows a placeholder). The menu is also the
+            // only way to quit: the window is borderless (no close
+            // button), and with exit prevented the app never ends on
+            // its own. "Quit" calls app.exit, which the run callback
+            // lets through (code Some).
+            //
+            // NOTE: `let _tray` dropping at the end of setup does
+            // NOT remove the icon — `build` registers a clone in
+            // the app resources table, which keeps it alive for
+            // the life of the process (tauri 2.12.7 tray/mod.rs).
+            let menu = tauri::menu::MenuBuilder::new(app)
+                .text("show", "Show Launcher")
+                .separator()
+                .text("quit", "Quit")
+                .build()?;
+            let mut tray_builder = tauri::tray::TrayIconBuilder::with_id("main");
+            match tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png")) {
+                Ok(icon) => {
+                    tray_builder = tray_builder.icon(icon);
+                }
+                Err(e) => {
+                    // Loud on stderr (visible when run from a
+                    // terminal): the tray is still created below,
+                    // so the menu and the way back to the window
+                    // survive a bad icon.
+                    eprintln!("WARNING: Sonic Launcher could not load its bundled tray icon (32x32.png): {e}; creating the tray without an icon");
+                }
             }
+            let _tray = tray_builder
+                .menu(&menu)
+                .tooltip("Sonic Launcher")
+                // Left-click shows the window, right-click shows the
+                // menu. The builder default is true (menu on left
+                // click too), which used to open the menu AND show
+                // the window on every click.
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| {
+                    if event.id() == "quit" {
+                        app.exit(0);
+                    } else if event.id() == "show" {
+                        let handle = app.clone();
+                        let _ = session::show_or_recreate_window(&handle);
+                    }
+                })
+                .on_tray_icon_event(|tray, event| {
+                    // Left-button release ONLY: any click (incl.
+                    // right-click, which also opens the menu) used
+                    // to show the window over the running game.
+                    // Field names verified against the vendored
+                    // tauri 2.12.7 crate sources on this VM.
+                    if let tauri::tray::TrayIconEvent::Click {
+                        button: tauri::tray::MouseButton::Left,
+                        button_state: tauri::tray::MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let handle = tray.app_handle().clone();
+                        // Never build a window on the main thread:
+                        // the tray event arrives there, and Tauri
+                        // warns that creating windows there can
+                        // deadlock on Windows.
+                        std::thread::spawn(move || {
+                            let _ = session::show_or_recreate_window(&handle);
+                        });
+                    }
+                })
+                .build(app)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

@@ -35,6 +35,18 @@ fn db_path(app: &AppHandle) -> Result<PathBuf, String> {
 fn open(app: &AppHandle) -> Result<Connection, String> {
     let path = db_path(app)?;
     let conn = Connection::open(&path).map_err(|e| format!("cannot open database: {e}"))?;
+    // v0.2.14: wait up to 5 s on a locked DB instead of failing
+    // instantly. After a tray Quit the old process can still hold
+    // the DB while it tears down; a relaunch inside that window
+    // used to die silently at startup (setup writes to the DB, the
+    // error aborts the build, and the GUI build discards stderr).
+    // The exact trigger of the one observed silent relaunch is
+    // still unproven — a WebView2 teardown race is the other
+    // candidate — but a zero timeout on a DB the app writes at
+    // startup is a proven fragility, and waiting briefly can never
+    // break the normal single-instance path.
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(|e| format!("cannot set database busy timeout: {e}"))?;
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS manual_games (
             id        INTEGER PRIMARY KEY AUTOINCREMENT,

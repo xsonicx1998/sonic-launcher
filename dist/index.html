@@ -46,13 +46,13 @@
   <div id="topBar" style="position:relative;z-index:2;padding:clamp(22px,2.4vw,38px) clamp(28px,3.6vw,64px) 0;text-shadow:0 1px 3px rgba(0,0,0,.85),0 4px 18px rgba(0,0,0,.65)">
     <div style="display:flex;align-items:center">
       <span style="font-size:clamp(18px,1.35vw,24px);font-weight:600;color:rgba(255,255,255,.98)">Games</span>
-      <span style="margin-left:auto;display:flex;align-items:center;gap:20px;font-size:16px;color:rgba(255,255,255,.92)"><span style="position:relative;cursor:pointer" onclick="showLbl('lblSearch');openSearch()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg><span id="lblSearch" style="display:none;position:absolute;top:28px;left:50%;transform:translateX(-50%);font-size:11px;white-space:nowrap">Search</span></span><span style="position:relative;cursor:pointer" onclick="showLbl('lblSettings');openSettings()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span id="lblSettings" style="display:none;position:absolute;top:28px;left:50%;transform:translateX(-50%);font-size:11px;white-space:nowrap">Settings</span></span><span style="position:relative;width:26px;height:26px;display:inline-flex;flex:none"><span style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#8B20FF,#00C8FF);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:600">M</span><span style="position:absolute;right:-1px;bottom:-1px;width:8px;height:8px;border-radius:50%;background:#2fd45a;border:1.5px solid rgba(0,0,0,.55)"></span></span><span id="clock" style="font-size:clamp(17px,1.25vw,22px);font-weight:300;letter-spacing:.02em;font-variant-numeric:tabular-nums">19:30</span><span style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-size:15px;font-weight:600" onclick="exitLauncher()" title="Exit Sonic Launcher"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M12 3v7"/><path d="M6.3 6.5a8 8 0 1 0 11.4 0"/></svg>Exit</span></span>
+      <span style="margin-left:auto;display:flex;align-items:center;gap:20px;font-size:16px;color:rgba(255,255,255,.92)"><span style="position:relative;cursor:pointer" onmouseenter="showLbl('lblSearch')" onmouseleave="hideLbl()" onclick="showLbl('lblSearch');openSearch()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg><span id="lblSearch" style="display:none;position:absolute;top:28px;left:50%;transform:translateX(-50%);font-size:11px;white-space:nowrap">Search</span></span><span style="position:relative;cursor:pointer" onmouseenter="showLbl('lblSettings')" onmouseleave="hideLbl()" onclick="showLbl('lblSettings');openSettings()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span id="lblSettings" style="display:none;position:absolute;top:28px;left:50%;transform:translateX(-50%);font-size:11px;white-space:nowrap">Settings</span></span><span style="position:relative;width:26px;height:26px;display:inline-flex;flex:none"><span style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#8B20FF,#00C8FF);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:600">M</span><span style="position:absolute;right:-1px;bottom:-1px;width:8px;height:8px;border-radius:50%;background:#2fd45a;border:1.5px solid rgba(0,0,0,.55)"></span></span><span id="clock" style="font-size:clamp(17px,1.25vw,22px);font-weight:300;letter-spacing:.02em;font-variant-numeric:tabular-nums">19:30</span><span style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-size:15px;font-weight:600" onclick="exitLauncher()" title="Exit Sonic Launcher"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M12 3v7"/><path d="M6.3 6.5a8 8 0 1 0 11.4 0"/></svg>Exit</span></span>
     </div>
     <div class="ps5-row-viewport" style="margin-top:14px"><div id="row" class="ps5-row-track"></div><div id="rowTitle" class="focused-game-title"></div></div>
   </div>
   <div id="searchBox" style="display:none;position:absolute;top:clamp(84px,9.5vh,120px);right:clamp(28px,3.6vw,64px);width:340px;max-width:80vw;background:rgba(20,22,32,.97);border:1px solid rgba(255,255,255,.16);border-radius:12px;padding:12px;box-shadow:0 12px 40px rgba(0,0,0,.6);z-index:9;font-size:14px;color:rgba(255,255,255,.92)">
     <input id="searchInput" type="text" placeholder="Search games&hellip;" autocomplete="off" oninput="renderSearchResults(this.value)" onkeydown="if(event.key==='Enter'){var h=searchGameMatches(this.value);if(h.length){pickSearchResult(h[0]);}}" style="width:100%;box-sizing:border-box;padding:9px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.45);color:#fff;font-size:14px;outline:none">
-    <div id="searchResults" style="margin-top:8px;max-height:300px;overflow-y:auto"></div>
+    <div id="searchResults" onwheel="event.preventDefault();var m=event.deltaMode===1?16:(event.deltaMode===2?this.clientHeight:1);this.scrollTop+=event.deltaY*m;" style="margin-top:8px;max-height:300px;overflow-y:auto"></div>
   </div>
   <div id="libraryGrid" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,.88);backdrop-filter:blur(12px);z-index:8;overflow-y:auto;padding:clamp(22px,2.4vw,38px) clamp(28px,3.6vw,64px)">
     <div style="display:flex;align-items:center"><span style="font-size:clamp(18px,1.35vw,24px);font-weight:600">Library</span><span onclick="closeLibraryGrid()" style="margin-left:auto;cursor:pointer;font-size:15px;color:rgba(255,255,255,.8)">Close</span></div>
@@ -96,7 +96,10 @@
     <div style="display:flex;align-items:center"><span style="font-size:15px;color:rgba(255,255,255,.85)">Power</span><span onclick="closePower()" style="margin-left:auto;cursor:pointer;color:rgba(255,255,255,.7);display:flex;align-items:center;justify-content:center;width:20px;height:20px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M6 6l12 12M18 6L6 18"/></svg></span></div>
     <div class="pwItem" onclick="exitLauncher()" style="margin-top:12px;border:1.5px solid rgba(255,255,255,.85);background:rgba(255,255,255,.12);border-radius:10px;padding:13px 14px;cursor:pointer"><div style="font-size:15px"><span style="display:inline-flex;vertical-align:-3px;margin-right:8px;width:17px;height:17px"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M12 3v7"/><path d="M6.3 6.5a8 8 0 1 0 11.4 0"/></svg></span>Exit Sonic Launcher</div><div class="pwDesc" style="font-size:12px;font-weight:300;color:rgba(255,255,255,.58);margin-top:5px;line-height:1.45">Close the launcher completely.</div></div>
   </div>
-  <div id="settings" style="display:none;position:absolute;inset:0;background:radial-gradient(ellipse 90% 60% at 8% 0%,rgba(200,190,170,.28),rgba(8,8,14,.97) 55%);z-index:8;overflow-y:auto">
+  <!-- v0.2.14: solid opaque background. The old semi-transparent
+       radial gradient let the main view's "Games" heading show
+       through at top-left, overlapping the "Settings" title. -->
+  <div id="settings" style="display:none;position:absolute;inset:0;background:#0B0F24;z-index:8;overflow-y:auto">
     <div style="padding:34px 0 0 60px;font-size:26px;font-weight:300">Settings</div>
         <div id="launcherSettings" style="margin:22px 60px 0;padding:16px 20px;border:1px solid rgba(255,255,255,.18);border-radius:12px;background:rgba(10,12,20,.55);font-size:14px;color:rgba(255,255,255,.9)">
       <div style="font-size:16px;font-weight:600;margin-bottom:12px">Sonic Launcher</div>
@@ -233,12 +236,17 @@ function setHeroBg(idx){
     el.style.transition = 'opacity 420ms ease';
     el.style.opacity = '1';
   }
-  setTimeout(function(){
-    if(currentBgEl !== prev){
-      prev.style.opacity = '0';
-      prev.classList.remove('is-active');
-    }
-  }, 450);
+  // v0.2.14: hide the old slide IMMEDIATELY. It used to wait
+  // 450 ms (setTimeout), so during fast navigation the hero still
+  // showed the previous game's art — right after a click the new
+  // slide is at opacity ~0 while the old one is at 1, i.e. the
+  // old art is essentially fully visible. The new slide still
+  // fades in over 420 ms, now over the dark page background
+  // instead of the old art.
+  if(prev){
+    prev.style.opacity = '0';
+    prev.classList.remove('is-active');
+  }
   currentBgEl = el;
 }
 /* v0.2.8: Steam game logo above the Play button. Shows the cached
@@ -343,7 +351,7 @@ function selectGame(i){
 function toggleCC(){ var c = document.getElementById('cc'); var opening = (c.style.display === 'none' || c.style.display === ''); c.style.display = opening ? 'block' : 'none'; document.getElementById('powerMenu').style.display = 'none'; playSfx(opening ? 'cc_open' : 'back'); }
 function openPower(){ playSfx('select'); document.getElementById('powerMenu').style.display = 'block'; }
 function closePower(){ var el = document.getElementById('powerMenu'); if(el && el.style.display !== 'none'){ el.style.display = 'none'; playSfx('back'); } }
-function openSettings(){ playSfx('select'); document.getElementById('settings').style.display = 'block'; populateLauncherSettings(); }
+function openSettings(){ hideLbl(); playSfx('select'); document.getElementById('settings').style.display = 'block'; populateLauncherSettings(); }
 function closeSettings(){ var el = document.getElementById('settings'); if(el && el.style.display !== 'none'){ el.style.display = 'none'; playSfx('back'); } }
 /* v0.2.11: the header clock actually ticks (it was set once at load
    and then froze — the "stuck clock" from the v0.2.8 live test). */
@@ -452,8 +460,16 @@ function pickLibraryGridGame(i){
   selectGame(i);
 }
 function showLbl(id){ ['lblSearch','lblSettings'].forEach(function(x){ var e=document.getElementById(x); if(e){ e.style.display=(x===id)?'block':'none'; } }); }
+/* v0.2.14: the header icon labels are hover tooltips. showLbl used
+   to be called only from the icons' onclick and there was NO hide
+   path at all — no hideLbl, no mouseleave — so the label stayed
+   visible after using search/settings until the window was
+   recreated. Now: show on mouseenter, hide on mouseleave, and hide
+   whenever a panel opens (openSearch/openSettings call hideLbl). */
+function hideLbl(){ ['lblSearch','lblSettings'].forEach(function(x){ var e=document.getElementById(x); if(e){ e.style.display='none'; } }); }
 /* ---- Game search: filter the library by title, pick a result to jump to it. ---- */
 function openSearch(){
+  hideLbl();
   var box = document.getElementById('searchBox');
   if(!box){ return; }
   if(box.style.display === 'block'){ closeSearch(); return; }

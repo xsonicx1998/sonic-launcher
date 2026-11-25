@@ -46,7 +46,6 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
 use crate::db;
-use crate::http;
 
 /// Art for one game, as exposed to the frontend.
 #[derive(Debug, Clone, Default, Serialize)]
@@ -837,15 +836,24 @@ pub fn art_already_resolved(art_source: Option<&str>, resolved_appid: Option<i64
 }
 
 /// Curated Steam appids for games whose current store listing is a
-/// renamed variant the strict matcher rejects (v0.2.13). Steam
-/// replaced the original "Grand Theft Auto V" listing with the
-/// Enhanced edition and "The Witcher 3" with "Wild Hunt —
-/// Remastered" / "REDkit" — no bare name is returned, so the
-/// matcher can never pick them. Keys are normalized folder names
-/// (`normalize_name` of the sanitized name). Consulted in
+/// renamed variant the strict matcher rejects (v0.2.13), plus one
+/// guard (v0.2.14): "Call of Duty Modern Warfare II" IS picked by
+/// the matcher — the live list returns the 2022 game (3595230)
+/// first and it wins Tier 1 exactly — but the 2009 game (10180)
+/// normalizes to the same string, so a transient lookup failure
+/// (recorded, then 14-day cooldown) leaves the game artless with
+/// no automatic recovery. The override makes the pick immune to
+/// both the near-tie and the cooldown. Keys are normalized folder
+/// names (`normalize_name` of the sanitized name) — Roman numerals
+/// are already Arabic by then, so "Modern Warfare II" keys as
+/// "call of duty modern warfare 2". Consulted in
 /// `resolve_art_for_game` before the store search. Keep it small
 /// and explicit — only games proven to need it.
-const KNOWN_APPIDS: &[(&str, u32)] = &[("grand theft auto 5", 3240220), ("the witcher 3", 292030)];
+const KNOWN_APPIDS: &[(&str, u32)] = &[
+    ("grand theft auto 5", 3240220),
+    ("the witcher 3", 292030),
+    ("call of duty modern warfare 2", 3595230),
+];
 
 /// The curated Steam appid for a folder name, if one is known.
 /// Pure — unit-tested.

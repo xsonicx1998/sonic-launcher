@@ -184,6 +184,7 @@ const NEEDED_FNS = [
   'isBootVisible', 'tileFocusedHTML', 'tilePlainHTML', 'tileIconHTML', 'escHtml', 'showToast',
   'toggleGameMenu', 'buildGameMenu', 'hideGameMenu',
   'openSearch', 'closeSearch', 'searchGameMatches', 'renderSearchResults',
+  'showLbl', 'hideLbl', 'openSettings',
   'pickSearchResult', 'toggleThemePlayback', 'applyRealArt', 'updateGameLogo',
   'baseTileFields', 'placeholderArt', 'mapUnifiedGame', 'titleCaseName', 'renderGameStats',
   'exitLauncher', 'openLibraryGrid', 'closeLibraryGrid', 'pickLibraryGridGame',
@@ -245,6 +246,9 @@ async function main() {
   // records that a refresh was requested.
   var refreshGamesCalls = 0;
   function refreshGames(){ refreshGamesCalls++; }
+  // Stub: openSettings populates the settings panel; the harness only
+  // checks that opening it hides the header tooltip labels (v0.2.14).
+  function populateLauncherSettings(){}
   // Evaluate the extracted code in this context (globals above are in scope).
   eval(code);
   // Wrap the real functions (the eval'd declarations replaced the
@@ -465,6 +469,72 @@ async function main() {
     pickSearchResult(2);
     assert.deepStrictEqual(selectGameCalls, [2], 'pick did not select game 2');
     assert.strictEqual(box.style.display, 'none', 'search box did not close after pick');
+  });
+  await check('v0.2.14: header tooltip hides on mouseleave and when search/settings open (no stuck label)', async () => {
+    // Live: showLbl shows one label, hideLbl clears both.
+    showLbl('lblSearch');
+    assert.strictEqual(getEl('lblSearch').style.display, 'block', 'Search label did not show');
+    assert.strictEqual(getEl('lblSettings').style.display, 'none', 'Settings label should be hidden while Search shows');
+    hideLbl();
+    assert.strictEqual(getEl('lblSearch').style.display, 'none', 'hideLbl did not clear the Search label');
+    showLbl('lblSettings');
+    assert.strictEqual(getEl('lblSettings').style.display, 'block', 'Settings label did not show');
+    // Live: opening search hides the label (the old code had no hide
+    // path at all — the label stuck until the window was recreated).
+    const box = getEl('searchBox');
+    box.style.display = 'none';
+    openSearch();
+    assert.strictEqual(getEl('lblSettings').style.display, 'none', 'opening search did not hide the Settings label');
+    assert.strictEqual(box.style.display, 'block', 'search box did not open');
+    closeSearch();
+    // Static: the icons show on hover and hide on mouseleave, and
+    // opening settings hides the label too.
+    assert(html.includes('onmouseenter="showLbl(\'lblSearch\')" onmouseleave="hideLbl()"'), 'search icon has no hover show/hide');
+    assert(html.includes('onmouseenter="showLbl(\'lblSettings\')" onmouseleave="hideLbl()"'), 'settings icon has no hover show/hide');
+    assert(extractFn(script, 'openSettings').includes('hideLbl()'), 'openSettings does not hide the labels');
+  });
+  await check('v0.2.14: search results scroll on wheel (explicit handler, deltaMode-aware)', async () => {
+    // Static: the results div carries an inline wheel handler that
+    // scrolls manually (belt-and-braces — native overflow scrolling
+    // did not respond to the wheel in the Round 2 RDP session).
+    const m = html.match(/<div id="searchResults"[^>]*>/);
+    assert(m, 'searchResults div not found');
+    assert(m[0].includes('onwheel='), 'searchResults has no wheel handler');
+    assert(m[0].includes('scrollTop+=event.deltaY'), 'wheel handler does not scroll manually');
+    assert(m[0].includes('deltaMode'), 'wheel handler is not deltaMode-aware');
+    assert(m[0].includes('preventDefault()'), 'wheel handler does not preventDefault (double scroll)');
+  });
+  await check('v0.2.14: hero crossfade hides the old slide immediately (no 450ms linger)', async () => {
+    // Live: the previous slide must be at opacity 0 synchronously
+    // after setHeroBg — the old 450ms setTimeout left the previous
+    // game's art fully visible right after a click.
+    const s0 = makeEl('bg0'), s1 = makeEl('bg1');
+    bgSlides = [s0, s1];
+    currentBgEl = s0;
+    bgZ = 1;
+    s0.style.opacity = '1';
+    s0.classList.add('is-active');
+    s1.style.opacity = '0';
+    setHeroBg(1);
+    assert.strictEqual(s0.style.opacity, '0', 'old slide still visible immediately after selection change');
+    assert(!s0.classList.contains('is-active'), 'old slide still has is-active (kenburns keeps running)');
+    assert.strictEqual(s1.style.opacity, '1', 'new slide did not fade in');
+    assert.strictEqual(currentBgEl, s1, 'currentBgEl did not advance');
+    // Static: no delayed hide left in setHeroBg (the word may still
+    // appear in the comment explaining the old behaviour — only a
+    // real setTimeout( call counts).
+    const fn = extractFn(script, 'setHeroBg');
+    assert(!fn.includes('setTimeout('), 'setHeroBg still defers hiding the old slide');
+    assert(fn.includes('opacity 420ms ease'), 'the 420ms fade-in is gone');
+  });
+  await check('v0.2.14: Settings panel is opaque (no bleed-through of the Games heading)', async () => {
+    // Static: the old semi-transparent radial gradient let the main
+    // view's "Games" heading show through at top-left, overlapping
+    // the "Settings" title. The panel must be a solid colour now.
+    const m = html.match(/<div id="settings"[^>]*>/);
+    assert(m, 'settings div not found');
+    assert(m[0].includes('background:#0B0F24'), 'settings panel is not opaque: ' + m[0]);
+    assert(!html.includes('rgba(200,190,170,.28)'), 'old translucent settings gradient still present');
   });
   await check('Music bar tap pauses and resumes the theme', async () => {
     themeAudio = makeEl('audio');

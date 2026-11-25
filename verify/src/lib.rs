@@ -120,11 +120,19 @@ pub mod art_pure {
     pub fn art_already_resolved(art_source: Option<&str>, resolved_appid: Option<i64>) -> bool {
         resolved_appid.is_some() || matches!(art_source, Some("manual") | Some("gog"))
     }
-    /// Curated Steam appids (v0.2.13). Mirror of
-    /// `art.rs::KNOWN_APPIDS` — games whose current store listing
-    /// is a renamed variant the strict matcher rejects.
-    const KNOWN_APPIDS: &[(&str, u32)] =
-        &[("grand theft auto 5", 3240220), ("the witcher 3", 292030)];
+    /// Curated Steam appids (v0.2.13, + CoD guard v0.2.14).
+    /// Mirror of `art.rs::KNOWN_APPIDS` — games whose current
+    /// store listing is a renamed variant the strict matcher
+    /// rejects, plus "Call of Duty Modern Warfare II": the
+    /// matcher picks it, but the 2009 game normalizes to the
+    /// same string and a transient failure + 14-day cooldown
+    /// would leave it artless, so the override pins 3595230.
+    /// Key is the normalized form (Roman "II" is already "2").
+    const KNOWN_APPIDS: &[(&str, u32)] = &[
+        ("grand theft auto 5", 3240220),
+        ("the witcher 3", 292030),
+        ("call of duty modern warfare 2", 3595230),
+    ];
     /// Mirror of `art.rs::known_appid`.
     pub fn known_appid(name: &str) -> Option<u32> {
         let norm = normalize_name(&sanitize_game_name(name));
@@ -611,6 +619,23 @@ pub mod art_pure {
         }
 
         #[test]
+        fn pick_match_call_of_duty_mw2_live_list() {
+            // v0.2.14 probe: the live storesearch (2026-11-25) for
+            // "call of duty modern warfare ii" returns the 2022
+            // game first (3595230) and the 2009 game second
+            // (10180). The 2022 game must win.
+            let cands = vec![
+                "Call of Duty®: Modern Warfare® II".to_string(),
+                "Call of Duty®: Modern Warfare® 2 (2009)".to_string(),
+                "Call of Duty®: Modern Warfare® II - Gunslinger Ghost".to_string(),
+            ];
+            assert_eq!(
+                pick_match("Call of Duty Modern Warfare II", &cands),
+                Some(0)
+            );
+        }
+
+        #[test]
         fn pick_match_witcher_3_live_list_has_no_bare_name() {
             // v0.2.13: the live storesearch returns only renamed
             // variants — "Wild Hunt — Remastered" (0.600) and
@@ -632,6 +657,14 @@ pub mod art_pure {
             // The sanitizer normalizes edition suffixes first, so an
             // "Enhanced" folder name maps to the same appid.
             assert_eq!(known_appid("Grand Theft Auto V Enhanced"), Some(3240220));
+            // v0.2.14: CoD MW2 (2022) is pinned to 3595230 — the
+            // matcher picks it, but the 2009 game normalizes to the
+            // same string, so the override removes the near-tie and
+            // the 14-day cooldown from the path entirely. Both
+            // spellings of the folder name map (Roman "II" is
+            // normalized to "2" before the lookup).
+            assert_eq!(known_appid("Call of Duty Modern Warfare II"), Some(3595230));
+            assert_eq!(known_appid("Call of Duty Modern Warfare 2"), Some(3595230));
             // Everything else goes through the store search.
             assert_eq!(known_appid("Cyberpunk 2077"), None);
             assert_eq!(known_appid("Some Random Game"), None);
@@ -1975,6 +2008,16 @@ pub mod stores_pure {
         if acronym_matches(&stem, folder_name) {
             parts.push((90, "acronym"));
         }
+        // v0.2.14 (mirror of stores.rs): an exe whose stem IS the
+        // folder name (spaceless) is the game's own binary.
+        // Generic folder names excluded (same list as
+        // `game_name_for_group`).
+        let generic = ["launcher", "game", "client", "main", "start", "play"];
+        if normalize_name(&stem) == normalize_name(folder_name)
+            && !generic.contains(&normalize_name(folder_name).as_str())
+        {
+            parts.push((90, "exact name"));
+        }
         let path = path_score(exe);
         if path != 0 {
             parts.push((path, "path"));
@@ -2658,6 +2701,73 @@ pub mod stores_pure {
                 "{ranked:?}"
             );
             assert_eq!(ranked[0].source, "unity data");
+            let _ = std::fs::remove_dir_all(&root);
+        }
+
+        #[test]
+        fn score_exe_exact_name_clears_false_warning_without_promoting_to_high() {
+            // v0.2.14 (Round 2): Horizon Zero Dawn and Minecraft
+            // showed a false "Not sure this is the right file"
+            // warning — a bare exe stem equal to its folder name
+            // earned only +50 (name) - 20 (tiny stub) = 30 ("low").
+            // The new +90 "exact name" signal lifts both to
+            // "medium" (no warning) while "high" (>= 150) stays
+            // reserved for external evidence.
+            let empty: HashSet<String> = HashSet::new();
+            let known: KnownGames = HashMap::new();
+            let root = std::env::temp_dir().join("p4-verify-score-exact-name");
+            let _ = std::fs::remove_dir_all(&root);
+            // Horizon stub: 90 + 50 - 20 = 120 -> medium.
+            let hz = root.join("Horizon Zero Dawn");
+            std::fs::create_dir_all(&hz).unwrap();
+            std::fs::write(hz.join("HorizonZeroDawn.exe"), b"x").unwrap();
+            let (score, source) = score_exe(
+                &hz.join("HorizonZeroDawn.exe"),
+                "Horizon Zero Dawn",
+                false,
+                false,
+                &known,
+            );
+            assert_eq!((score, source), (120, "exact name"));
+            assert_eq!(confidence_of(score), "medium");
+            // Minecraft, real-size binary: 90 + 50 = 140 -> medium.
+            let mc = root.join("Minecraft");
+            std::fs::create_dir_all(&mc).unwrap();
+            std::fs::write(mc.join("Minecraft.exe"), vec![0u8; 1_000_000]).unwrap();
+            let (score, source) =
+                score_exe(&mc.join("Minecraft.exe"), "Minecraft", false, false, &known);
+            assert_eq!((score, source), (140, "exact name"));
+            assert_eq!(confidence_of(score), "medium");
+            // Generic folder names are excluded: a Launcher.exe in
+            // a "Launcher" folder proves nothing (50 - 20 = 30).
+            let lg = root.join("Launcher");
+            std::fs::create_dir_all(&lg).unwrap();
+            std::fs::write(lg.join("Launcher.exe"), b"x").unwrap();
+            let (score, source) =
+                score_exe(&lg.join("Launcher.exe"), "Launcher", false, false, &known);
+            assert_eq!((score, source), (30, "name"));
+            assert_eq!(confidence_of(score), "low");
+            // Genuinely uncertain picks keep the warning: Fail Game
+            // (fail.exe) and CoD MW2 (cod.exe, cryptic stem that
+            // matches neither the acronym nor the folder name).
+            let fg = root.join("Fail Game");
+            std::fs::create_dir_all(&fg).unwrap();
+            std::fs::write(fg.join("fail.exe"), b"x").unwrap();
+            let (score, _) = score_exe(&fg.join("fail.exe"), "Fail Game", false, false, &known);
+            assert_eq!(score, 30);
+            assert_eq!(confidence_of(score), "low");
+            let cod = root.join("Call of Duty Modern Warfare II");
+            std::fs::create_dir_all(&cod).unwrap();
+            std::fs::write(cod.join("cod.exe"), b"x").unwrap();
+            let (score, _) = score_exe(
+                &cod.join("cod.exe"),
+                "Call of Duty Modern Warfare II",
+                false,
+                false,
+                &known,
+            );
+            assert_eq!(score, -20);
+            assert_eq!(confidence_of(score), "low");
             let _ = std::fs::remove_dir_all(&root);
         }
 

@@ -38,9 +38,14 @@
       "icons/icon.png",
       "icons/icon.ico"
     ],
-    "targets": "all"
+    "targets": "all",
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine"
+      }
+    }
   },
   "identifier": "com.sonic.launcher",
   "productName": "Sonic Launcher",
-  "version": "0.2.13"
+  "version": "0.2.14"
 }

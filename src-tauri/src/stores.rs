@@ -747,10 +747,23 @@ fn has_unity_data_dir(exe: &Path) -> bool {
 /// - Uninstall-registry DisplayIcon: +150 ("registry")
 /// - Unity `<stem>_Data` next to the exe: +100 ("unity data")
 /// - Acronym match: +90 ("acronym")
+/// - Exe stem exactly the folder name (spaceless): +90 ("exact name")
 /// - Path bonus (Binaries\Win64, bin\x64, Shipping): up to +90 ("path")
 /// - Folder-word match (a word of 3+ chars from the folder name in the
 ///   stem): +50 ("name")
 /// - Tiny exe (< 1 MB): -20 (stubs are small; real binaries rarely are)
+///
+/// "high" (>= 150) stays reserved for external evidence (shortcut,
+/// known game, registry): the exact-name signal ties the acronym
+/// tier at +90, so a bare `Minecraft.exe` in a "Minecraft" folder
+/// (90 + 50 - 20 = 120) or a real one (90 + 50 = 140) scores
+/// "medium" and no longer shows the false "Not sure this is the
+/// right file" warning (v0.2.14, Round 2). Generic folder names
+/// ("launcher", "game", "client", "main", "start", "play") are
+/// excluded — a `launcher.exe` in a "Launcher" folder proves
+/// nothing. Genuinely uncertain picks still warn: `fail.exe` in
+/// "Fail Game" and `cod.exe` in "Call of Duty Modern Warfare II"
+/// match nothing and stay "low".
 ///
 /// Returns the score and the label of the biggest single contributor
 /// (or "largest" when nothing contributed — the size tiebreak in
@@ -783,6 +796,18 @@ pub fn score_exe(
     }
     if acronym_matches(&stem, folder_name) {
         parts.push((90, "acronym"));
+    }
+    // v0.2.14: an exe whose stem IS the folder name (spaceless) is
+    // the game's own binary — "HorizonZeroDawn.exe" in
+    // "Horizon Zero Dawn", "Minecraft.exe" in "Minecraft". Generic
+    // folder names are excluded (same list as
+    // `game_name_for_group`): a `launcher.exe` in a "Launcher"
+    // folder is not evidence of anything.
+    let generic = ["launcher", "game", "client", "main", "start", "play"];
+    if normalize_name(&stem) == normalize_name(folder_name)
+        && !generic.contains(&normalize_name(folder_name).as_str())
+    {
+        parts.push((90, "exact name"));
     }
     let path = path_score(exe);
     if path != 0 {

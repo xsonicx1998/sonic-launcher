@@ -781,6 +781,18 @@ fn download_steam_art(app: &AppHandle, game_key: &str, appid: u32) -> bool {
     download_art(&header_url, &tile, None);
     download_art(&hero_url, &hero, None);
     download_art(&capsule_url, &capsule, None);
+    // v0.2.15: some listings publish no header/capsule at all —
+    // reuse the hero as the tile (and as the capsule when it is
+    // missing too) when it is the only art that downloaded. The
+    // tile is rendered with object-fit: cover, so the wide hero is
+    // center-cropped, never stretched — same as the GOG wide-as-tile
+    // fallback. A real capsule is never overwritten.
+    if hero_fallback_needed(tile.is_file(), hero.is_file()) {
+        let _ = std::fs::copy(&hero, &tile);
+    }
+    if hero_fallback_needed(capsule.is_file(), hero.is_file()) {
+        let _ = std::fs::copy(&hero, &capsule);
+    }
     // Logo last (v0.2.8): optional — a miss is recorded, never an error.
     let _ = download_logo_art(app, game_key, &logo_url);
     tile.is_file()
@@ -872,6 +884,19 @@ pub fn known_appid(name: &str) -> Option<u32> {
 /// Pure — unit-tested.
 pub fn steam_hit_resolves(download_ok: bool) -> bool {
     download_ok
+}
+
+/// `true` when the downloaded Steam hero image should double as a
+/// missing target file (tile or capsule) — v0.2.15: some Steam
+/// listings (e.g. Call of Duty: Modern Warfare II, appid 3595230)
+/// publish no header.jpg and no library_600x900.jpg at all (both
+/// 404; only library_hero.jpg exists), so the download can never
+/// produce a tile and the game stays artless even though the appid
+/// is known and the hero downloaded fine. Reusing the hero mirrors
+/// the GOG fallback ("wide as the tile when no portrait exists").
+/// Pure — unit-tested.
+pub fn hero_fallback_needed(target_exists: bool, hero_exists: bool) -> bool {
+    !target_exists && hero_exists
 }
 
 /// `true` when a lookup error should be recorded as a failed
@@ -1629,6 +1654,18 @@ mod tests {
         // v0.2.13 F1: a failed CDN download must not resolve the game.
         assert!(steam_hit_resolves(true));
         assert!(!steam_hit_resolves(false));
+    }
+
+    #[test]
+    fn hero_fallback_needed_only_when_target_missing_and_hero_present() {
+        // v0.2.15: CoD MWII (3595230) has no header/capsule on the
+        // CDN — the hero is the only art — so the fallback fires.
+        assert!(hero_fallback_needed(false, true));
+        // A real tile/capsule is never overwritten.
+        assert!(!hero_fallback_needed(true, true));
+        // No hero, nothing to fall back to.
+        assert!(!hero_fallback_needed(false, false));
+        assert!(!hero_fallback_needed(true, false));
     }
 
     #[test]

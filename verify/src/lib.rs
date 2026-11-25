@@ -147,6 +147,13 @@ pub mod art_pure {
     pub fn steam_hit_resolves(download_ok: bool) -> bool {
         download_ok
     }
+    /// Mirror of `art.rs::hero_fallback_needed` (v0.2.15): the
+    /// downloaded hero doubles as a missing tile/capsule when a
+    /// Steam listing publishes no header.jpg / library_600x900.jpg
+    /// (e.g. Call of Duty: Modern Warfare II, appid 3595230).
+    pub fn hero_fallback_needed(target_exists: bool, hero_exists: bool) -> bool {
+        !target_exists && hero_exists
+    }
     /// Mirror of `art.rs::lookup_failure_records` (v0.2.13 F2):
     /// every lookup failure is recorded except a rate limit, so
     /// "Retry Art" stays available after network errors.
@@ -676,6 +683,18 @@ pub mod art_pure {
             // v0.2.13 F1: a failed CDN download must not resolve the game.
             assert!(steam_hit_resolves(true));
             assert!(!steam_hit_resolves(false));
+        }
+
+        #[test]
+        fn hero_fallback_needed_only_when_target_missing_and_hero_present() {
+            // v0.2.15: CoD MWII (3595230) has no header/capsule on the
+            // CDN — the hero is the only art — so the fallback fires.
+            assert!(hero_fallback_needed(false, true));
+            // A real tile/capsule is never overwritten.
+            assert!(!hero_fallback_needed(true, true));
+            // No hero, nothing to fall back to.
+            assert!(!hero_fallback_needed(false, false));
+            assert!(!hero_fallback_needed(true, false));
         }
 
         #[test]

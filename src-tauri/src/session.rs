@@ -36,38 +36,59 @@ use crate::db;
 use crate::playtime;
 use crate::steam;
 
+/// Unix seconds, for exit.log timestamps (no chrono dependency).
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// Resolve the exit.log path (v0.2.17 — the watchdog thread gets
+/// its path here, while the app is still healthy, so it never
+/// touches Tauri state after the exit is requested).
+pub fn exit_log_path(app: &AppHandle) -> Option<std::path::PathBuf> {
+    app.path().app_data_dir().ok().map(|d| d.join("exit.log"))
+}
+
+/// Append one timestamped line to a log file by path, with no
+/// Tauri calls at all (v0.2.17 — the watchdog's raw writer: the
+/// v0.2.16 watchdog called append_exit_log through the AppHandle
+/// and never fired in the VPS repro, so the watchdog now touches
+/// nothing but the filesystem). Never panics, never fails the
+/// caller: every error is swallowed. The file is truncated once it
+/// passes 1 MB instead of growing forever.
+pub fn append_raw_log(path: &std::path::Path, line: &str) {
+    use std::io::Write;
+    let text = format!("[{}] {line}\n", now_secs());
+    if std::fs::metadata(path).map(|m| m.len()).unwrap_or(0) > 1_000_000 {
+        let _ = std::fs::write(path, &text);
+        return;
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        let _ = f.write_all(text.as_bytes());
+    }
+}
+
 /// Append one timestamped line to exit.log in the app data dir
 /// (v0.2.16 — diagnose the lingering process after quit: eprintln
 /// goes nowhere in a GUI build on Windows, so exit events go to a
 /// file the VPS test can read with Get-Content). Never fails the
-/// caller: every error is swallowed. The file is truncated once it
-/// passes 1 MB instead of growing forever.
+/// caller: every error is swallowed.
 pub fn append_exit_log(app: &AppHandle, line: &str) {
-    let dir = match app.path().app_data_dir() {
-        Ok(d) => d,
-        Err(_) => return,
+    let Some(path) = exit_log_path(app) else {
+        return;
     };
-    if std::fs::create_dir_all(&dir).is_err() {
-        return;
+    if let Some(parent) = path.parent() {
+        if std::fs::create_dir_all(parent).is_err() {
+            return;
+        }
     }
-    let path = dir.join("exit.log");
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let text = format!("[{secs}] {line}\n");
-    if std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0) > 1_000_000 {
-        let _ = std::fs::write(&path, &text);
-        return;
-    }
-    use std::io::Write;
-    if let Ok(mut f) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-    {
-        let _ = f.write_all(text.as_bytes());
-    }
+    append_raw_log(&path, line);
 }
 
 /// Whether a game is currently running (v0.2.11). Set when a launch

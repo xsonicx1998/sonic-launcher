@@ -234,19 +234,44 @@ fn get_app_version() -> String {
 /// Play / tray-host lifecycle (v0.2.10) is untouched. Every step is
 /// also written to exit.log (see session::append_exit_log) so the
 /// next VPS repro can prove which path was taken.
+///
+/// v0.2.17 — root-cause fix, proven from vendored tao 0.37.3: after
+/// ExitRequested sets ExitWithCode, the Windows loop only breaks
+/// out when a LATER message arrives — GetMessageW blocks forever
+/// otherwise, and the wakeup setup posts NOTHING for ExitWithCode.
+/// So after app.exit(0) this also destroys the main window, which
+/// posts exactly the message that wakes the parked loop: it
+/// dispatches the destroy, sees ExitWithCode and exits. The
+/// destroy's own ExitRequested{None} cannot cancel the exit — when
+/// a game runs it is prevented (control flow left as-is, still
+/// ExitWithCode); when no game runs it only sets plain Exit. The
+/// watchdog stays as the backstop, but it no longer touches any
+/// Tauri API: the v0.2.16 watchdog (which logged through the
+/// AppHandle) never fired in the VPS repro, so its path is resolved
+/// HERE while the app is healthy and the thread only does a raw
+/// file append + exit. Its spawn/awake lines prove whether the
+/// thread itself ran.
 #[tauri::command]
 fn quit_launcher(app: AppHandle) {
     session::append_exit_log(&app, "quit_launcher invoked — watchdog armed (5s)");
-    let watchdog_app = app.clone();
+    let log_path = session::exit_log_path(&app);
     std::thread::spawn(move || {
+        if let Some(p) = &log_path {
+            session::append_raw_log(p, "watchdog spawned (5s)");
+        }
         std::thread::sleep(std::time::Duration::from_secs(5));
-        session::append_exit_log(
-            &watchdog_app,
-            "WATCHDOG: still alive 5s after quit_launcher — forcing exit",
-        );
+        if let Some(p) = &log_path {
+            session::append_raw_log(
+                p,
+                "WATCHDOG: still alive 5s after quit_launcher — forcing exit",
+            );
+        }
         std::process::exit(0);
     });
     app.exit(0);
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.destroy();
+    }
 }
 
 /// Kill the yt-dlp child currently running, if any — the frontend

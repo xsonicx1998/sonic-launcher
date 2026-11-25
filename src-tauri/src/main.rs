@@ -50,7 +50,7 @@ mod session;
 mod steam;
 mod stores;
 
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 // --- Phase 1 ---------------------------------------------------------------
 
@@ -222,8 +222,30 @@ fn get_app_version() -> String {
 /// Power menu "Exit Sonic Launcher" all call this; Alt+F4 / window
 /// close also ends here when no game is running, via the run
 /// callback letting the exit through).
+///
+/// v0.2.16 — exit watchdog: on the VPS the process was seen alive
+/// ~2.5 min after "Exit Launcher" (window gone, 7.8 MB, no WebView2
+/// children), even though `app.exit(0)` can never be prevented by
+/// the run callback. The graceful exit is kept as the first path,
+/// but a watchdog thread force-exits 5 s later if the process is
+/// still alive — a stuck event loop can no longer leave a zombie
+/// the user can only kill from Task Manager. The watchdog runs ONLY
+/// on this explicit quit path, never on window destroy, so the
+/// Play / tray-host lifecycle (v0.2.10) is untouched. Every step is
+/// also written to exit.log (see session::append_exit_log) so the
+/// next VPS repro can prove which path was taken.
 #[tauri::command]
 fn quit_launcher(app: AppHandle) {
+    session::append_exit_log(&app, "quit_launcher invoked — watchdog armed (5s)");
+    let watchdog_app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(5));
+        session::append_exit_log(
+            &watchdog_app,
+            "WATCHDOG: still alive 5s after quit_launcher — forcing exit",
+        );
+        std::process::exit(0);
+    });
     app.exit(0);
 }
 
@@ -430,12 +452,20 @@ fn start_playtime_session(
     // Window-stays-open launch path (setting OFF): a game is now
     // running, so Alt+F4 / window close must NOT quit the app — the
     // v0.2.10 tray-host behaviour holds until the session ends.
+    session::append_exit_log(
+        &app,
+        &format!("GAME_RUNNING=true (start_playtime_session {game_name})"),
+    );
     session::set_game_running(true);
     playtime::start_session(&app, &game_key, &game_name)
 }
 
 #[tauri::command]
 fn end_playtime_session(app: AppHandle, session_id: i64) -> Result<(), String> {
+    session::append_exit_log(
+        &app,
+        &format!("GAME_RUNNING=false (end_playtime_session id={session_id})"),
+    );
     session::set_game_running(false);
     playtime::end_session(&app, session_id)
 }
@@ -553,7 +583,10 @@ fn main() {
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| {
                     if event.id() == "quit" {
-                        app.exit(0);
+                        // v0.2.16: same quit path as the Settings /
+                        // Power buttons, so the exit watchdog + log
+                        // cover the tray Quit too.
+                        quit_launcher(app.clone());
                     } else if event.id() == "show" {
                         let handle = app.clone();
                         let _ = session::show_or_recreate_window(&handle);
@@ -636,7 +669,7 @@ fn main() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building Sonic Launcher")
-        .run(|_app, event| match event {
+        .run(|app, event| match event {
             // v0.2.10: the runtime asks to exit (code None) when the
             // last window is destroyed. Destroying the window on game
             // launch must NOT end the process — the tray host stays
@@ -652,7 +685,18 @@ fn main() {
             // on launch (managed path + start_playtime_session) and
             // cleared on game exit.
             tauri::RunEvent::ExitRequested { api, code, .. } => {
-                if session::should_prevent_exit(code, session::is_game_running()) {
+                let game_running = session::is_game_running();
+                let prevent = session::should_prevent_exit(code, game_running);
+                // v0.2.16: log every exit request so a lingering
+                // process can be diagnosed from exit.log instead of
+                // guessed at — code + flag + decision, one line.
+                session::append_exit_log(
+                    app,
+                    &format!(
+                        "ExitRequested code={code:?} game_running={game_running} prevent={prevent}"
+                    ),
+                );
+                if prevent {
                     api.prevent_exit();
                 }
             }

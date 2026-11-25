@@ -36,6 +36,40 @@ use crate::db;
 use crate::playtime;
 use crate::steam;
 
+/// Append one timestamped line to exit.log in the app data dir
+/// (v0.2.16 — diagnose the lingering process after quit: eprintln
+/// goes nowhere in a GUI build on Windows, so exit events go to a
+/// file the VPS test can read with Get-Content). Never fails the
+/// caller: every error is swallowed. The file is truncated once it
+/// passes 1 MB instead of growing forever.
+pub fn append_exit_log(app: &AppHandle, line: &str) {
+    let dir = match app.path().app_data_dir() {
+        Ok(d) => d,
+        Err(_) => return,
+    };
+    if std::fs::create_dir_all(&dir).is_err() {
+        return;
+    }
+    let path = dir.join("exit.log");
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let text = format!("[{secs}] {line}\n");
+    if std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0) > 1_000_000 {
+        let _ = std::fs::write(&path, &text);
+        return;
+    }
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        let _ = f.write_all(text.as_bytes());
+    }
+}
+
 /// Whether a game is currently running (v0.2.11). Set when a launch
 /// starts (managed path here, or the `start_playtime_session` command
 /// for the window-stays-open path) and cleared when the game exits.
@@ -207,12 +241,20 @@ pub fn begin_managed_launch(
         // window close from here on is a real quit, not a lifecycle
         // exit. The window may already exist again (e.g. the user
         // clicked the tray icon mid-game) — then this just shows it.
+        append_exit_log(
+            &watcher_app,
+            "GAME_RUNNING=false (watcher: game gone, recreating window)",
+        );
         set_game_running(false);
         let _ = show_or_recreate_window(&watcher_app);
     });
     // The game is starting: the window destroy below must NOT end the
     // process — the run callback prevents the exit while this flag
     // is set (see should_prevent_exit).
+    append_exit_log(
+        app,
+        &format!("GAME_RUNNING=true (begin_managed_launch {game_name})"),
+    );
     set_game_running(true);
     destroy_launcher_window(app);
     Ok(())
